@@ -13,9 +13,9 @@ const manrope = Manrope({ subsets: ["latin"], variable: "--font-sans", display: 
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Politics — Aristotle, tr. Jowett",
+  title: "Aristotle's Politics",
   description:
-    "The complete text of Aristotle's Politics in Benjamin Jowett's translation — read, highlight, and discuss, passage by passage.",
+    "The complete text of Aristotle's Politics in Benjamin Jowett's translation.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
