@@ -1,0 +1,167 @@
+import { v4 as uuid } from "uuid";
+import {
+  redis, annotKey, repliesKey, idxAll, idxBook, idxChapter, idxTag, idxUser, namesKey, tagsKey, authorsKey,
+} from "./redis";
+import type { Annotation, AnnotationThread, Anchor, Reply, PublicUser } from "./types";
+
+export function normalizeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const t = raw.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    if (t && t.length <= 40 && !seen.has(t)) { seen.add(t); out.push(t); }
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+// ---- create ----
+export async function createAnnotation(
+  user: PublicUser,
+  input: { book: number; chapter: number; anchors: Anchor[]; quote: string; body: string; tags: string[] }
+): Promise<Annotation> {
+  const now = Date.now();
+  const a: Annotation = {
+    id: uuid(),
+    userId: user.id,
+    authorName: user.displayName,
+    book: input.book,
+    chapter: input.chapter,
+    anchors: input.anchors,
+    quote: input.quote.slice(0, 2000),
+    body: input.body.slice(0, 8000),
+    tags: normalizeTags(input.tags),
+    createdAt: now,
+    updatedAt: now,
+    replyCount: 0,
+  };
+  const p = redis.pipeline();
+  p.set(annotKey(a.id), a);
+  p.zadd(idxAll(), { score: now, member: a.id });
+  p.zadd(idxBook(a.book), { score: now, member: a.id });
+  p.zadd(idxChapter(a.book, a.chapter), { score: now, member: a.id });
+  p.zadd(idxUser(a.userId), { score: now, member: a.id });
+  p.zincrby(authorsKey(), 1, a.userId);
+  p.hset(namesKey(), { [a.userId]: a.authorName });
+  for (const t of a.tags) {
+    p.zadd(idxTag(t), { score: now, member: a.id });
+    p.zincrby(tagsKey(), 1, t);
+  }
+  await p.exec();
+  return a;
+}
+
+export async function getAnnotation(id: string): Promise<Annotation | null> {
+  return redis.get<Annotation>(annotKey(id));
+}
+
+export async function getReplies(annotId: string): Promise<Reply[]> {
+  const raw = await redis.lrange<Reply>(repliesKey(annotId), 0, -1);
+  return raw.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function getThread(id: string): Promise<AnnotationThread | null> {
+  const a = await getAnnotation(id);
+  if (!a) return null;
+  const replies = await getReplies(id);
+  return { ...a, replies };
+}
+
+async function hydrate(ids: string[]): Promise<Annotation[]> {
+  if (!ids.length) return [];
+  const keys = ids.map(annotKey);
+  const rows = await redis.mget<Annotation[]>(...keys);
+  return rows.filter((r): r is Annotation => !!r);
+}
+
+// ---- queries (newest first) ----
+export async function listByChapter(book: number, chapter: number): Promise<Annotation[]> {
+  const ids = await redis.zrange<string[]>(idxChapter(book, chapter), 0, -1, { rev: true });
+  return hydrate(ids);
+}
+export async function listByBook(book: number): Promise<Annotation[]> {
+  const ids = await redis.zrange<string[]>(idxBook(book), 0, -1, { rev: true });
+  return hydrate(ids);
+}
+export async function listByTag(tag: string): Promise<Annotation[]> {
+  const ids = await redis.zrange<string[]>(idxTag(tag), 0, -1, { rev: true });
+  return hydrate(ids);
+}
+export async function listByUser(userId: string): Promise<Annotation[]> {
+  const ids = await redis.zrange<string[]>(idxUser(userId), 0, -1, { rev: true });
+  return hydrate(ids);
+}
+export async function listRecent(limit = 40): Promise<Annotation[]> {
+  const ids = await redis.zrange<string[]>(idxAll(), 0, limit - 1, { rev: true });
+  return hydrate(ids);
+}
+
+export async function topTags(limit = 50): Promise<{ tag: string; count: number }[]> {
+  const rows = await redis.zrange<(string | number)[]>(tagsKey(), 0, limit - 1, {
+    rev: true, withScores: true,
+  });
+  const out: { tag: string; count: number }[] = [];
+  for (let i = 0; i < rows.length; i += 2) out.push({ tag: String(rows[i]), count: Number(rows[i + 1]) });
+  return out;
+}
+
+export async function authorName(userId: string): Promise<string> {
+  return (await redis.hget<string>(namesKey(), userId)) || "Anonymous";
+}
+
+export async function listAuthors(limit = 200): Promise<{ id: string; name: string; count: number }[]> {
+  const rows = await redis.zrange<(string | number)[]>(authorsKey(), 0, limit - 1, { rev: true, withScores: true });
+  const out: { id: string; name: string; count: number }[] = [];
+  const ids: string[] = [];
+  const counts: number[] = [];
+  for (let i = 0; i < rows.length; i += 2) { ids.push(String(rows[i])); counts.push(Number(rows[i + 1])); }
+  if (!ids.length) return out;
+  const names = await redis.hmget<Record<string, string>>(namesKey(), ...ids);
+  ids.forEach((id, i) => { if (counts[i] > 0) out.push({ id, name: names?.[id] || "Anonymous", count: counts[i] }); });
+  return out;
+}
+
+// ---- replies ----
+export async function addReply(
+  user: PublicUser, annotId: string, body: string, parentId: string | null
+): Promise<Reply | null> {
+  const a = await getAnnotation(annotId);
+  if (!a) return null;
+  const reply: Reply = {
+    id: uuid(),
+    annotationId: annotId,
+    userId: user.id,
+    authorName: user.displayName,
+    body: body.slice(0, 8000),
+    parentId: parentId,
+    createdAt: Date.now(),
+  };
+  a.replyCount = (a.replyCount || 0) + 1;
+  a.updatedAt = reply.createdAt;
+  const p = redis.pipeline();
+  p.rpush(repliesKey(annotId), reply);
+  p.set(annotKey(annotId), a);
+  p.hset(namesKey(), { [user.id]: user.displayName });
+  await p.exec();
+  return reply;
+}
+
+// ---- delete (owner only) ----
+export async function deleteAnnotation(id: string, userId: string): Promise<boolean> {
+  const a = await getAnnotation(id);
+  if (!a || a.userId !== userId) return false;
+  const p = redis.pipeline();
+  p.del(annotKey(id));
+  p.del(repliesKey(id));
+  p.zrem(idxAll(), id);
+  p.zrem(idxBook(a.book), id);
+  p.zrem(idxChapter(a.book, a.chapter), id);
+  p.zrem(idxUser(a.userId), id);
+  p.zincrby(authorsKey(), -1, a.userId);
+  for (const t of a.tags) {
+    p.zrem(idxTag(t), id);
+    p.zincrby(tagsKey(), -1, t);
+  }
+  await p.exec();
+  return true;
+}
