@@ -40,9 +40,9 @@
   --accent-deep: #a07f33;
   --accent-warm: #c9a44e;
   --on-accent: #20180a;
-  --hl: rgba(201, 162, 77, 0.20);
-  --hl-strong: rgba(201, 162, 77, 0.34);
-  --hl-mine: rgba(201, 162, 77, 0.20);
+  --hl: rgba(201, 162, 77, 0.24);
+  --hl-strong: rgba(201, 162, 77, 0.40);
+  --hl-mine: rgba(201, 162, 77, 0.24);
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.35);
 }
 
@@ -332,11 +332,14 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 [data-para="ornamental"] .pnum { font-size: 0; }
 [data-para="ornamental"] .pnum::before { content: "\2767"; font-size: .9rem; color: var(--text-faint); }
 .para .ptext mark {
-  background: var(--hl); color: inherit; padding: .05em 0; border-radius: 2px;
-  cursor: pointer; transition: background .15s; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  background: var(--hl); color: inherit; padding: .04em 0; border-radius: 2px;
+  border-bottom: 2px solid color-mix(in srgb, var(--accent-warm) 65%, transparent);
+  cursor: pointer; transition: background .15s, border-color .15s; box-decoration-break: clone; -webkit-box-decoration-break: clone;
 }
 .para .ptext mark.mine { background: var(--hl-mine); }
-.para .ptext mark:hover, .para .ptext mark.active { background: var(--hl-strong); }
+.para .ptext mark:hover, .para .ptext mark.active { background: var(--hl-strong); border-bottom-color: var(--accent); }
+/* highlights are the only comment cue in page mode → make them a touch stronger */
+.reader-area[data-mode="page"] .ptext mark { background: var(--hl-strong); }
 
 /* drop cap on first paragraph of a chapter */
 .para.first .ptext::first-letter {

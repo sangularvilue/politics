@@ -13,9 +13,14 @@ export function PagedView({ children, jumpToBlockId }: { children: React.ReactNo
   const measure = useCallback(() => {
     const vp = viewportRef.current, ct = contentRef.current;
     if (!vp || !ct) return;
-    const w = vp.clientWidth;
-    setStep(w);
-    const total = Math.max(1, Math.round(ct.scrollWidth / w));
+    // A "page" advances by the content width PLUS one column-gap, because CSS
+    // multicol places a gap between every column (including across page breaks).
+    // Using width alone drifts by one gap per turn.
+    const gap = parseFloat(getComputedStyle(ct).columnGap) || 0;
+    const w = ct.clientWidth;
+    const s = w + gap;
+    setStep(s);
+    const total = Math.max(1, Math.round((ct.scrollWidth + gap) / s));
     setPages(total);
     setPage((p) => Math.min(p, total - 1));
   }, []);
@@ -45,7 +50,7 @@ export function PagedView({ children, jumpToBlockId }: { children: React.ReactNo
     const ct = contentRef.current;
     if (el && ct) {
       const left = el.getBoundingClientRect().left - ct.getBoundingClientRect().left;
-      setPage(Math.max(0, Math.round(left / step)));
+      setPage(Math.max(0, Math.floor((left + 2) / step)));
       jumpedRef.current = true;
     }
   }, [jumpToBlockId, step, pages]);
