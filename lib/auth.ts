@@ -17,6 +17,7 @@ export interface StoredUser {
   /** scrypt hash, stored as `salt:hash` (both hex). */
   passHash: string;
   createdAt: number;
+  isAdmin?: boolean;
 }
 
 // ---- password hashing (node crypto, no external deps) ----
@@ -80,5 +81,11 @@ export async function currentUser(): Promise<PublicUser | null> {
   if (!id) return null;
   const u = await getUserById(id);
   if (!u) return null;
-  return { id: u.id, email: u.email, displayName: u.displayName };
+  return { id: u.id, email: u.email, displayName: u.displayName, isAdmin: !!u.isAdmin };
+}
+
+/** Returns the current user only if they are an admin, else null. */
+export async function currentAdmin(): Promise<PublicUser | null> {
+  const u = await currentUser();
+  return u?.isAdmin ? u : null;
 }

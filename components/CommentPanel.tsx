@@ -27,7 +27,6 @@ function timeAgo(ts: number): string {
 
 export function CommentPanel(props: Props) {
   const { mode, quote, anchors, ids, book, chapter, user, onClose, onChanged } = props;
-
   return (
     <>
       <div className="panel-scrim" onClick={onClose} />
@@ -37,22 +36,25 @@ export function CommentPanel(props: Props) {
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
         {mode === "create" ? (
-          <CreateForm book={book} chapter={chapter} anchors={anchors} quote={quote} onClose={onClose} onChanged={onChanged} />
+          <CreateForm book={book} chapter={chapter} anchors={anchors} quote={quote} user={user} onClose={onClose} onChanged={onChanged} />
         ) : (
-          <ViewThreads ids={ids} user={user} onClose={onClose} onChanged={onChanged} />
+          <ViewThreads ids={ids} user={user} onChanged={onChanged} />
         )}
       </aside>
     </>
   );
 }
 
-function CreateForm({ book, chapter, anchors, quote, onClose, onChanged }: {
-  book: number; chapter: number; anchors: Anchor[]; quote: string; onClose: () => void; onChanged: () => void;
+function CreateForm({ anchors, quote, user, onClose, onChanged }: {
+  book: number; chapter: number; anchors: Anchor[]; quote: string; user: PublicUser | null; onClose: () => void; onChanged: () => void;
 }) {
   const [body, setBody] = useState("");
   const [tags, setTags] = useState("");
+  const [asName, setAsName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const book = (anchors[0]?.blockId.match(/^b(\d+)/) || [])[1];
+  const chapter = (anchors[0]?.blockId.match(/\.c(\d+)/) || [])[1];
 
   async function submit() {
     if (!body.trim()) { setErr("Write a comment first."); return; }
@@ -61,8 +63,9 @@ function CreateForm({ book, chapter, anchors, quote, onClose, onChanged }: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        book, chapter, anchors, quote, body: body.trim(),
+        book: Number(book), chapter: Number(chapter), anchors, quote, body: body.trim(),
         tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        asName: user?.isAdmin ? asName.trim() : undefined,
       }),
     });
     setBusy(false);
@@ -80,6 +83,12 @@ function CreateForm({ book, chapter, anchors, quote, onClose, onChanged }: {
         <div style={{ height: ".8rem" }} />
         <label className="field-label">Tags (comma-separated — e.g. slavery, the-state, virtue)</label>
         <input className="field" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="optional" />
+        {user?.isAdmin && (
+          <div className="admin-field">
+            <label className="field-label">⚷ Post as (admin) — leave blank to post as yourself</label>
+            <input className="field" value={asName} onChange={(e) => setAsName(e.target.value)} placeholder="e.g. Mark Grannis" />
+          </div>
+        )}
         {err && <p className="err" style={{ color: "#e88", fontSize: ".85rem", marginTop: ".6rem" }}>{err}</p>}
       </div>
       <div className="panel-foot" style={{ display: "flex", gap: ".6rem", justifyContent: "flex-end" }}>
@@ -90,8 +99,8 @@ function CreateForm({ book, chapter, anchors, quote, onClose, onChanged }: {
   );
 }
 
-function ViewThreads({ ids, user, onClose, onChanged }: {
-  ids: string[]; user: PublicUser | null; onClose: () => void; onChanged: () => void;
+function ViewThreads({ ids, user, onChanged }: {
+  ids: string[]; user: PublicUser | null; onChanged: () => void;
 }) {
   const [threads, setThreads] = useState<AnnotationThread[] | null>(null);
 
@@ -108,86 +117,176 @@ function ViewThreads({ ids, user, onClose, onChanged }: {
   return (
     <div className="panel-body">
       {threads.map((t) => (
-        <ThreadCard key={t.id} thread={t} user={user} reload={async () => { await load(); onChanged(); }} onGone={async () => { await load(); onChanged(); }} />
+        <ThreadCard key={t.id} thread={t} user={user} reload={async () => { await load(); onChanged(); }} />
       ))}
     </div>
   );
 }
 
-function ThreadCard({ thread, user, reload, onGone }: {
-  thread: AnnotationThread; user: PublicUser | null; reload: () => Promise<void>; onGone: () => Promise<void>;
+const canEdit = (user: PublicUser | null, ownerId: string) => !!user && (user.isAdmin || user.id === ownerId);
+
+function ThreadCard({ thread, user, reload }: {
+  thread: AnnotationThread; user: PublicUser | null; reload: () => Promise<void>;
 }) {
   const [replyTo, setReplyTo] = useState<string | null | "root">(null);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function sendReply(parentId: string | null) {
-    if (!text.trim()) return;
-    setBusy(true);
-    const r = await fetch(`/api/annotations/${thread.id}/replies`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: text.trim(), parentId }),
-    });
-    setBusy(false);
-    if (r.ok) { setText(""); setReplyTo(null); await reload(); }
-    else if (r.status === 401) window.location.href = `/login?next=${encodeURIComponent(location.pathname)}`;
-  }
+  const [editing, setEditing] = useState(false);
+  const nameOf = (id: string) => thread.replies.find((x) => x.id === id)?.authorName || thread.authorName;
 
   async function del() {
     if (!confirm("Delete this annotation and its replies?")) return;
-    const r = await fetch(`/api/annotations/${thread.id}`, { method: "DELETE" });
-    if (r.ok) await onGone();
+    if ((await fetch(`/api/annotations/${thread.id}`, { method: "DELETE" })).ok) await reload();
   }
-
-  const nameOf = (id: string) => thread.replies.find((x) => x.id === id)?.authorName || thread.authorName;
 
   return (
     <div className="annot">
       <div className="quote-block">“{thread.quote}”</div>
       <div className="meta">
         <span className="who"><Link href={`/authors/${thread.userId}`}>{thread.authorName}</Link></span>
-        <span>· {timeAgo(thread.createdAt)}</span>
-        {user?.id === thread.userId && <button className="reply-btn" style={{ marginLeft: "auto" }} onClick={del}>delete</button>}
+        <span>· {timeAgo(thread.createdAt)}{thread.editedAt ? " · edited" : ""}</span>
+        {canEdit(user, thread.userId) && (
+          <span style={{ marginLeft: "auto", display: "flex", gap: ".7rem" }}>
+            <button className="reply-btn" onClick={() => setEditing((v) => !v)}>edit</button>
+            <button className="reply-btn" onClick={del}>delete</button>
+          </span>
+        )}
       </div>
-      <div className="body">{thread.body}</div>
-      {thread.tags.length > 0 && (
-        <div className="tags">
-          {thread.tags.map((t) => <Link key={t} href={`/tags/${t}`} className="tag-chip">#{t}</Link>)}
-        </div>
+
+      {editing ? (
+        <EditBox
+          initialBody={thread.body} initialTags={thread.tags.join(", ")} initialAuthor={thread.authorName}
+          isAdmin={!!user?.isAdmin} withTags
+          onCancel={() => setEditing(false)}
+          onSave={async (body, tags, asName) => {
+            await fetch(`/api/annotations/${thread.id}`, {
+              method: "PATCH", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ body, tags, asName }),
+            });
+            setEditing(false); await reload();
+          }}
+        />
+      ) : (
+        <>
+          <div className="body">{thread.body}</div>
+          {thread.tags.length > 0 && (
+            <div className="tags">{thread.tags.map((t) => <Link key={t} href={`/tags/${t}`} className="tag-chip">#{t}</Link>)}</div>
+          )}
+        </>
       )}
 
       {thread.replies.length > 0 && (
         <div className="replies">
           {thread.replies.map((rp) => (
-            <div className="reply" key={rp.id}>
-              <div className="meta">
-                <span className="who"><Link href={`/authors/${rp.userId}`}>{rp.authorName}</Link></span>
-                {rp.parentId && <span> · ↳ {nameOf(rp.parentId)}</span>}
-                <span> · {timeAgo(rp.createdAt)}</span>
-              </div>
-              <div className="body">{rp.body}</div>
-              <button className="reply-btn" onClick={() => { setReplyTo(rp.id); setText(""); }}>reply</button>
-            </div>
+            <ReplyItem key={rp.id} reply={rp} annotId={thread.id} user={user} nameOf={nameOf}
+              onReply={() => { setReplyTo(rp.id); }} reload={reload} />
           ))}
         </div>
       )}
 
       {replyTo !== null ? (
-        <div style={{ marginTop: ".8rem" }}>
-          <textarea className="field" rows={3} autoFocus value={text} onChange={(e) => setText(e.target.value)}
-            placeholder={replyTo === "root" ? "Add to the discussion…" : `Reply to ${nameOf(replyTo)}…`} />
-          <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end", marginTop: ".5rem" }}>
-            <button className="btn" onClick={() => setReplyTo(null)}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy} onClick={() => sendReply(replyTo === "root" ? null : replyTo)}>
-              {busy ? "…" : "Reply"}
-            </button>
-          </div>
-        </div>
+        <ReplyBox
+          isAdmin={!!user?.isAdmin}
+          placeholder={replyTo === "root" ? "Add to the discussion…" : `Reply to ${nameOf(replyTo)}…`}
+          onCancel={() => setReplyTo(null)}
+          onSend={async (body, asName) => {
+            const r = await fetch(`/api/annotations/${thread.id}/replies`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ body, parentId: replyTo === "root" ? null : replyTo, asName }),
+            });
+            if (r.status === 401) { window.location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
+            setReplyTo(null); await reload();
+          }}
+        />
       ) : (
-        <button className="reply-btn" style={{ marginTop: ".6rem" }} onClick={() => { setReplyTo("root"); setText(""); }}>
+        <button className="reply-btn" style={{ marginTop: ".6rem" }} onClick={() => setReplyTo("root")}>
           {user ? "+ Reply to thread" : "Sign in to reply"}
         </button>
       )}
+    </div>
+  );
+}
+
+function ReplyItem({ reply, annotId, user, nameOf, onReply, reload }: {
+  reply: Reply; annotId: string; user: PublicUser | null; nameOf: (id: string) => string; onReply: () => void; reload: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  async function del() {
+    if (!confirm("Delete this reply?")) return;
+    if ((await fetch(`/api/annotations/${annotId}/replies/${reply.id}`, { method: "DELETE" })).ok) await reload();
+  }
+  return (
+    <div className="reply">
+      <div className="meta">
+        <span className="who"><Link href={`/authors/${reply.userId}`}>{reply.authorName}</Link></span>
+        {reply.parentId && <span> · ↳ {nameOf(reply.parentId)}</span>}
+        <span> · {timeAgo(reply.createdAt)}{reply.editedAt ? " · edited" : ""}</span>
+      </div>
+      {editing ? (
+        <EditBox
+          initialBody={reply.body} initialAuthor={reply.authorName} isAdmin={!!user?.isAdmin}
+          onCancel={() => setEditing(false)}
+          onSave={async (body, _tags, asName) => {
+            await fetch(`/api/annotations/${annotId}/replies/${reply.id}`, {
+              method: "PATCH", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ body, asName }),
+            });
+            setEditing(false); await reload();
+          }}
+        />
+      ) : (
+        <>
+          <div className="body">{reply.body}</div>
+          <div style={{ display: "flex", gap: ".7rem", marginTop: ".3rem" }}>
+            <button className="reply-btn" onClick={onReply}>reply</button>
+            {canEdit(user, reply.userId) && <button className="reply-btn" onClick={() => setEditing(true)}>edit</button>}
+            {canEdit(user, reply.userId) && <button className="reply-btn" onClick={del}>delete</button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ReplyBox({ isAdmin, placeholder, onCancel, onSend }: {
+  isAdmin: boolean; placeholder: string; onCancel: () => void; onSend: (body: string, asName?: string) => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const [asName, setAsName] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div style={{ marginTop: ".8rem" }}>
+      <textarea className="field" rows={3} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} />
+      {isAdmin && <input className="field" style={{ marginTop: ".4rem" }} value={asName} onChange={(e) => setAsName(e.target.value)} placeholder="⚷ Reply as (admin) — optional" />}
+      <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end", marginTop: ".5rem" }}>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={async () => { setBusy(true); await onSend(text.trim(), asName.trim() || undefined); setBusy(false); }}>
+          {busy ? "…" : "Reply"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditBox({ initialBody, initialTags, initialAuthor, isAdmin, withTags, onCancel, onSave }: {
+  initialBody: string; initialTags?: string; initialAuthor: string; isAdmin: boolean; withTags?: boolean;
+  onCancel: () => void; onSave: (body: string, tags: string[] | undefined, asName?: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState(initialBody);
+  const [tags, setTags] = useState(initialTags || "");
+  const [asName, setAsName] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div style={{ marginTop: ".5rem" }}>
+      <textarea className="field" rows={5} autoFocus value={body} onChange={(e) => setBody(e.target.value)} />
+      {withTags && <input className="field" style={{ marginTop: ".4rem" }} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tags, comma-separated" />}
+      {isAdmin && <input className="field" style={{ marginTop: ".4rem" }} value={asName} onChange={(e) => setAsName(e.target.value)} placeholder={`⚷ Reassign author (admin) — currently ${initialAuthor}`} />}
+      <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end", marginTop: ".5rem" }}>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" disabled={busy || !body.trim()} onClick={async () => {
+          setBusy(true);
+          await onSave(body.trim(), withTags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined, asName.trim() || undefined);
+          setBusy(false);
+        }}>{busy ? "…" : "Save"}</button>
+      </div>
     </div>
   );
 }

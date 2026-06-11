@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth";
 import { getChapter } from "@/lib/text";
 import {
-  createAnnotation, listByChapter, listByBook, listByTag, listByUser, listRecent,
+  createAnnotation, listByChapter, listByBook, listByTag, listByUser, listRecent, guestId,
 } from "@/lib/store";
 import type { Anchor } from "@/lib/types";
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
   const quote = String(b.quote || "");
   const body = String(b.body || "").trim();
   const tags: string[] = Array.isArray(b.tags) ? b.tags.map(String) : [];
+  const asName = String(b.asName || "").trim();
 
   if (!body) return NextResponse.json({ error: "Comment cannot be empty." }, { status: 400 });
   if (!anchors.length) return NextResponse.json({ error: "Select some text to highlight." }, { status: 400 });
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid selection range." }, { status: 400 });
   }
 
-  const a = await createAnnotation(user, { book, chapter, anchors, quote, body, tags });
+  const author = user.isAdmin && asName
+    ? { id: guestId(asName), name: asName }
+    : { id: user.id, name: user.displayName };
+  const a = await createAnnotation(author, { book, chapter, anchors, quote, body, tags });
   return NextResponse.json({ annotation: a });
 }

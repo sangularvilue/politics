@@ -27,6 +27,7 @@ export interface PublicUser {
   id: string;
   email: string;
   displayName: string;
+  isAdmin?: boolean;
 }
 
 // ---- Annotations ----
@@ -52,6 +53,7 @@ export interface Annotation {
   tags: string[];
   createdAt: number;
   updatedAt: number;
+  editedAt?: number;
   replyCount: number;
 }
 
@@ -64,6 +66,7 @@ export interface Reply {
   /** null for a top-level reply, else the Reply.id being responded to. */
   parentId: string | null;
   createdAt: number;
+  editedAt?: number;
 }
 
 /** Annotation plus its thread, returned to the client. */

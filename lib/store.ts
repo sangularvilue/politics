@@ -2,7 +2,16 @@ import { v4 as uuid } from "uuid";
 import {
   redis, annotKey, repliesKey, idxAll, idxBook, idxChapter, idxTag, idxUser, namesKey, tagsKey, authorsKey,
 } from "./redis";
-import type { Annotation, AnnotationThread, Anchor, Reply, PublicUser } from "./types";
+import type { Annotation, AnnotationThread, Anchor, Reply } from "./types";
+
+/** Author of a comment — a real user id, or a synthetic guest id for "posted as". */
+export interface Author { id: string; name: string }
+export interface Requester { id: string; isAdmin?: boolean }
+
+/** Stable synthetic id for a named guest author (so they get a browsable author page). */
+export function guestId(name: string): string {
+  return "guest:" + name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 export function normalizeTags(tags: string[]): string[] {
   const seen = new Set<string>();
@@ -17,14 +26,14 @@ export function normalizeTags(tags: string[]): string[] {
 
 // ---- create ----
 export async function createAnnotation(
-  user: PublicUser,
+  author: Author,
   input: { book: number; chapter: number; anchors: Anchor[]; quote: string; body: string; tags: string[] }
 ): Promise<Annotation> {
   const now = Date.now();
   const a: Annotation = {
     id: uuid(),
-    userId: user.id,
-    authorName: user.displayName,
+    userId: author.id,
+    authorName: author.name,
     book: input.book,
     chapter: input.chapter,
     anchors: input.anchors,
@@ -123,15 +132,15 @@ export async function listAuthors(limit = 200): Promise<{ id: string; name: stri
 
 // ---- replies ----
 export async function addReply(
-  user: PublicUser, annotId: string, body: string, parentId: string | null
+  author: Author, annotId: string, body: string, parentId: string | null
 ): Promise<Reply | null> {
   const a = await getAnnotation(annotId);
   if (!a) return null;
   const reply: Reply = {
     id: uuid(),
     annotationId: annotId,
-    userId: user.id,
-    authorName: user.displayName,
+    userId: author.id,
+    authorName: author.name,
     body: body.slice(0, 8000),
     parentId: parentId,
     createdAt: Date.now(),
@@ -141,9 +150,50 @@ export async function addReply(
   const p = redis.pipeline();
   p.rpush(repliesKey(annotId), reply);
   p.set(annotKey(annotId), a);
-  p.hset(namesKey(), { [user.id]: user.displayName });
+  p.hset(namesKey(), { [author.id]: author.name });
   await p.exec();
   return reply;
+}
+
+// ---- edit / delete: annotations (owner or admin) ----
+export async function updateAnnotation(
+  id: string,
+  patch: { body?: string; tags?: string[]; author?: Author },
+  requester: Requester
+): Promise<Annotation | null | "forbidden"> {
+  const a = await getAnnotation(id);
+  if (!a) return null;
+  if (a.userId !== requester.id && !requester.isAdmin) return "forbidden";
+
+  const now = Date.now();
+  const p = redis.pipeline();
+
+  if (typeof patch.body === "string") a.body = patch.body.slice(0, 8000);
+
+  if (patch.tags) {
+    const newTags = normalizeTags(patch.tags);
+    for (const t of a.tags) if (!newTags.includes(t)) { p.zrem(idxTag(t), id); p.zincrby(tagsKey(), -1, t); }
+    for (const t of newTags) if (!a.tags.includes(t)) { p.zadd(idxTag(t), { score: a.createdAt, member: id }); p.zincrby(tagsKey(), 1, t); }
+    a.tags = newTags;
+  }
+
+  // admin may reassign authorship
+  if (patch.author && requester.isAdmin) {
+    if (patch.author.id !== a.userId) {
+      p.zrem(idxUser(a.userId), id);
+      p.zincrby(authorsKey(), -1, a.userId);
+      p.zadd(idxUser(patch.author.id), { score: a.createdAt, member: id });
+      p.zincrby(authorsKey(), 1, patch.author.id);
+      a.userId = patch.author.id;
+    }
+    a.authorName = patch.author.name;
+    p.hset(namesKey(), { [a.userId]: a.authorName });
+  }
+
+  a.editedAt = now; a.updatedAt = now;
+  p.set(annotKey(id), a);
+  await p.exec();
+  return a;
 }
 
 // ---- search across comments ----
@@ -194,10 +244,10 @@ export async function searchAnnotations(q: string, limit = 60): Promise<CommentH
   return hits;
 }
 
-// ---- delete (owner only) ----
-export async function deleteAnnotation(id: string, userId: string): Promise<boolean> {
+// ---- delete (owner or admin) ----
+export async function deleteAnnotation(id: string, requester: Requester): Promise<boolean> {
   const a = await getAnnotation(id);
-  if (!a || a.userId !== userId) return false;
+  if (!a || (a.userId !== requester.id && !requester.isAdmin)) return false;
   const p = redis.pipeline();
   p.del(annotKey(id));
   p.del(repliesKey(id));
@@ -210,6 +260,41 @@ export async function deleteAnnotation(id: string, userId: string): Promise<bool
     p.zrem(idxTag(t), id);
     p.zincrby(tagsKey(), -1, t);
   }
+  await p.exec();
+  return true;
+}
+
+// ---- edit / delete: replies (owner or admin) ----
+export async function updateReply(
+  annotId: string, replyId: string, patch: { body?: string; author?: Author }, requester: Requester
+): Promise<Reply | null | "forbidden"> {
+  const replies = await redis.lrange<Reply>(repliesKey(annotId), 0, -1);
+  const rp = replies.find((r) => r.id === replyId);
+  if (!rp) return null;
+  if (rp.userId !== requester.id && !requester.isAdmin) return "forbidden";
+  if (typeof patch.body === "string") rp.body = patch.body.slice(0, 8000);
+  if (patch.author && requester.isAdmin) { rp.userId = patch.author.id; rp.authorName = patch.author.name; }
+  rp.editedAt = Date.now();
+  // rewrite the list in order
+  const p = redis.pipeline();
+  p.del(repliesKey(annotId));
+  for (const r of replies) p.rpush(repliesKey(annotId), r);
+  if (patch.author && requester.isAdmin) p.hset(namesKey(), { [rp.userId]: rp.authorName });
+  await p.exec();
+  return rp;
+}
+
+export async function deleteReply(annotId: string, replyId: string, requester: Requester): Promise<boolean> {
+  const replies = await redis.lrange<Reply>(repliesKey(annotId), 0, -1);
+  const rp = replies.find((r) => r.id === replyId);
+  if (!rp) return false;
+  if (rp.userId !== requester.id && !requester.isAdmin) return false;
+  const remaining = replies.filter((r) => r.id !== replyId);
+  const a = await getAnnotation(annotId);
+  const p = redis.pipeline();
+  p.del(repliesKey(annotId));
+  for (const r of remaining) p.rpush(repliesKey(annotId), r);
+  if (a) { a.replyCount = Math.max(0, (a.replyCount || 1) - 1); p.set(annotKey(annotId), a); }
   await p.exec();
   return true;
 }

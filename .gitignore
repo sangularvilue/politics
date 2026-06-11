@@ -7,3 +7,7 @@ next-env.d.ts
 .vercel
 
 .vercel
+
+# local one-off scripts (admin/seed)
+_*.mjs
+_*.ps1

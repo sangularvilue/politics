@@ -264,6 +264,8 @@ textarea.field, input.field {
 }
 textarea.field:focus, input.field:focus { outline: none; border-color: var(--accent); }
 .field-label { font-size: .75rem; color: var(--ink-faint); margin-bottom: .35rem; display: block; }
+.admin-field { margin-top: .8rem; padding: .7rem .8rem; border: 1px dashed var(--accent-deep); border-radius: 10px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.admin-field .field-label { color: var(--accent); }
 
 /* ---------- Search ---------- */
 .search-field { font-size: 1.15rem; padding: .9rem 1.1rem; font-family: var(--font-serif); }
