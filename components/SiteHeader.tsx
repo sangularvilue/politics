@@ -1,26 +1,17 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useUser } from "@/lib/useUser";
+import { PrefsPopover } from "./PrefsPopover";
+import { TagColorModal } from "./TagColorModal";
 
 export function SiteHeader() {
   const { user, logout } = useUser();
   const path = usePathname();
   const router = useRouter();
-  const [theme, setTheme] = useState<"ink" | "sepia">("ink");
-
-  useEffect(() => {
-    const t = (document.documentElement.dataset.theme as "ink" | "sepia") || "ink";
-    setTheme(t);
-  }, []);
-
-  function toggleTheme() {
-    const next = theme === "ink" ? "sepia" : "ink";
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("pol-theme", next); } catch {}
-  }
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const is = (p: string) => (path === p || path.startsWith(p + "/") ? "active" : "");
 
@@ -35,20 +26,21 @@ export function SiteHeader() {
         <Link href="/browse" className={is("/browse")}>Browse</Link>
         <Link href="/search" className={`icon-btn ${is("/search")}`} title="Search" aria-label="Search">⌕</Link>
         <Link href="/about" className={is("/about")}>About</Link>
-        <button className="icon-btn" onClick={toggleTheme} title="Toggle reading surface" aria-label="Toggle theme">
-          {theme === "ink" ? "☾" : "☀"}
-        </button>
+        <div style={{ position: "relative" }}>
+          <button className={`icon-btn${prefsOpen ? " active" : ""}`} onClick={() => setPrefsOpen((v) => !v)} title="Reading preferences" aria-label="Reading preferences">⚙</button>
+          {prefsOpen && <PrefsPopover onClose={() => setPrefsOpen(false)} />}
+        </div>
+        {user?.isAdmin && <button className="nav-admin" onClick={() => setAdminOpen(true)} title="Tag colors">Admin</button>}
         {user ? (
           <>
-            <Link href={`/authors/${user.id}`} title="Your annotations" style={{ color: "var(--ink)" }}>
-              {user.displayName}
-            </Link>
+            <Link href={`/authors/${user.id}`} title="Your annotations" style={{ color: "var(--ink)" }}>{user.displayName}</Link>
             <button className="btn" onClick={async () => { await logout(); router.refresh(); }}>Sign out</button>
           </>
         ) : (
           <Link href={`/login?next=${encodeURIComponent(path)}`} className="btn">Sign in</Link>
         )}
       </nav>
+      {adminOpen && <TagColorModal onClose={() => setAdminOpen(false)} />}
     </header>
   );
 }

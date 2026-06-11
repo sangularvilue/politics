@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getBook, getChapter, neighbours, cite } from "@/lib/text";
 import { listByBook } from "@/lib/store";
 import { currentUser } from "@/lib/auth";
+import { redis, tagColorsKey } from "@/lib/redis";
+import { DEFAULT_TAG_COLORS } from "@/lib/colors";
 import { Reader } from "@/components/Reader";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +24,10 @@ export default async function ReadPage({ params, searchParams }: {
   const ch = getChapter(book, chapter);
   if (!bk || !ch) notFound();
 
-  const [annotations, user] = await Promise.all([listByBook(book), currentUser()]);
+  const [annotations, user, stored] = await Promise.all([
+    listByBook(book), currentUser(), redis.hgetall<Record<string, string>>(tagColorsKey()),
+  ]);
+  const tagColors = { ...DEFAULT_TAG_COLORS, ...(stored || {}) };
   const { prev, next } = neighbours(book, chapter);
 
   return (
@@ -35,6 +40,7 @@ export default async function ReadPage({ params, searchParams }: {
       user={user}
       openId={openId}
       focusBlockId={focusBlockId}
+      tagColors={tagColors}
     />
   );
 }

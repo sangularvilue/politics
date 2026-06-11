@@ -4,8 +4,11 @@ import Link from "next/link";
 import type { Annotation, Anchor, Block, Book, PublicUser } from "@/lib/types";
 import { Blocks, type Range3 } from "./Blocks";
 import { PagedView } from "./PagedView";
-import { CommentPanel } from "./CommentPanel";
+import { CommentPanel, CommentThreads } from "./CommentPanel";
+import { ProgressBar } from "./ProgressBar";
 import { selectionToAnchors, parseBlockId } from "@/lib/selection";
+import { usePrefs } from "@/lib/prefs";
+import { hlBg, dotColor } from "@/lib/colors";
 
 type Mode = "chapter" | "scroll" | "page";
 interface Ref2 { book: number; chapter: number }
@@ -19,13 +22,17 @@ interface Props {
   user: PublicUser | null;
   openId?: string;
   focusBlockId?: string;
+  tagColors: Record<string, string>;
 }
 
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
-export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId, focusBlockId }: Props) {
+export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId, focusBlockId, tagColors }: Props) {
+  const { prefs } = usePrefs();
+  const commentStyle = prefs.commentStyle;
   const [mode, setMode] = useState<Mode>("chapter");
   const [showComments, setShowComments] = useState(true);
+  const [inlineOpen, setInlineOpen] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [toolbar, setToolbar] = useState<{ x: number; y: number; anchors: Anchor[]; quote: string } | null>(null);
   const [panel, setPanel] = useState<
@@ -128,8 +135,30 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     window.getSelection()?.removeAllRanges();
   }
 
-  function openView(ids: string[]) { if (ids.length) setPanel({ mode: "view", ids }); }
-  const activeIds = panel?.mode === "view" ? panel.ids : [];
+  function openView(ids: string[]) {
+    if (!ids.length) return;
+    if (commentStyle === "inline") { setInlineOpen((cur) => (cur === ids[0] ? null : ids[0])); return; }
+    setPanel({ mode: "view", ids });
+  }
+  const activeIds = panel?.mode === "view" ? panel.ids : (inlineOpen ? [inlineOpen] : []);
+  const renderInlineThread = (id: string) => <CommentThreads ids={[id]} user={user} onChanged={refresh} />;
+
+  // categorical highlight colors (resolved from each annotation's first colored tag)
+  const colorByAnnot = useMemo(() => {
+    const m: Record<string, { hl?: string; dot?: string }> = {};
+    if (!prefs.categoricalColors) return m;
+    for (const a of annotations) {
+      for (const t of a.tags) {
+        const c = tagColors[t];
+        if (c) { m[a.id] = { hl: hlBg(c, 0.34), dot: dotColor(c) }; break; }
+      }
+    }
+    return m;
+  }, [annotations, tagColors, prefs.categoricalColors]);
+  const markColor = (ids: string[]) => { for (const id of ids) { const c = colorByAnnot[id]?.hl; if (c) return c; } return undefined; };
+  const tagColorOf = (a: Annotation) => colorByAnnot[a.id]?.dot ?? null;
+  // annotations in current view, in reading order (for the sidebar rail)
+  const visibleNotes = view.blocks.flatMap((b) => notesByBlock[b.id] || []);
 
   // deep link
   const jumpedRef = useRef(false);
@@ -172,13 +201,16 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   const blocksEl = (
     <Blocks blocks={view.blocks} rangesByBlock={rangesByBlock} activeIds={activeIds}
       onMarkClick={openView} firstOfChapter={view.firstOfChapter} headings={view.headings}
-      showComments={showComments} notesByBlock={notesByBlock} onOpen={openView} />
+      showComments={showComments} notesByBlock={notesByBlock} onOpen={openView}
+      commentStyle={commentStyle} inlineOpenId={inlineOpen} renderInlineThread={renderInlineThread}
+      tagColorOf={tagColorOf} markColor={markColor} />
   );
 
   const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
 
   return (
-    <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"}>
+    <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"} data-comment-style={commentStyle}>
+      {prefs.progressBar && mode !== "page" && <ProgressBar />}
       <div className="reader-bar">
         <div className="rt-label">
           <Link href="/browse">{book.title}</Link>
@@ -225,6 +257,27 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         )}
 
         {mode === "page" && <PagedView jumpToBlockId={jumpId}>{blocksEl}</PagedView>}
+
+        {commentStyle === "sidebar" && showComments && mode !== "page" && (
+          <aside className="comment-rail">
+            <div className="rail-head">Comments ({visibleNotes.length})</div>
+            {visibleNotes.length === 0 && <p className="muted" style={{ fontSize: ".82rem" }}>No comments in view.</p>}
+            {visibleNotes.map((a) => (
+              <button key={a.id} className={`margin-card${activeIds.includes(a.id) ? " active" : ""}`}
+                onClick={() => {
+                  setPanel({ mode: "view", ids: [a.id] });
+                  document.querySelector<HTMLElement>(`[data-block-id="${a.anchors[0]?.blockId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}>
+                <div className="mc-who">{a.authorName}</div>
+                <div className="mc-body">{a.body.length > 150 ? a.body.slice(0, 150) + "…" : a.body}</div>
+                <div className="mc-foot">
+                  {a.replyCount > 0 && <span>{a.replyCount} repl{a.replyCount === 1 ? "y" : "ies"}</span>}
+                  {a.tags.slice(0, 2).map((t) => <span key={t} className="mc-tag">#{t}</span>)}
+                </div>
+              </button>
+            ))}
+          </aside>
+        )}
       </div>
 
       {toolbar && (

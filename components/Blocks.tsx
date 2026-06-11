@@ -20,10 +20,10 @@ function segmentBlock(text: string, ranges: Range3[]): Seg[] {
   return segs;
 }
 
-function MarginCard({ a, active, onOpen }: { a: Annotation; active: boolean; onOpen: () => void }) {
+function MarginCard({ a, active, onOpen, dot }: { a: Annotation; active: boolean; onOpen: () => void; dot?: string | null }) {
   const body = a.body.length > 150 ? a.body.slice(0, 150).trimEnd() + "…" : a.body;
   return (
-    <button className={`margin-card${active ? " active" : ""}`} onClick={onOpen}>
+    <button className={`margin-card${active ? " active" : ""}`} onClick={onOpen} style={dot ? { borderLeftColor: dot } : undefined}>
       <div className="mc-who">{a.authorName}</div>
       <div className="mc-body">{body}</div>
       <div className="mc-foot">
@@ -36,7 +36,7 @@ function MarginCard({ a, active, onOpen }: { a: Annotation; active: boolean; onO
 
 export function Blocks({
   blocks, rangesByBlock, activeIds, onMarkClick, firstOfChapter, headings,
-  showComments, notesByBlock, onOpen,
+  showComments, notesByBlock, onOpen, commentStyle, inlineOpenId, renderInlineThread, tagColorOf, markColor,
 }: {
   blocks: Block[];
   rangesByBlock: Record<string, Range3[]>;
@@ -47,6 +47,11 @@ export function Blocks({
   showComments: boolean;
   notesByBlock: Record<string, Annotation[]>;
   onOpen: (ids: string[]) => void;
+  commentStyle: "margin" | "inline" | "sidebar";
+  inlineOpenId?: string | null;
+  renderInlineThread?: (id: string) => React.ReactNode;
+  tagColorOf?: (a: Annotation) => string | null;
+  markColor?: (ids: string[]) => string | undefined;
 }) {
   return (
     <>
@@ -66,6 +71,7 @@ export function Blocks({
                       <mark
                         key={i}
                         className={`${s.mine ? "mine" : ""} ${s.ids.some((id) => activeIds.includes(id)) ? "active" : ""}`}
+                        style={markColor?.(s.ids) ? { background: markColor(s.ids) } : undefined}
                         onClick={(e) => { e.stopPropagation(); onMarkClick(s.ids); }}
                       >
                         {s.text}
@@ -76,14 +82,28 @@ export function Blocks({
                   )}
                 </div>
               </div>
-              {notes.length > 0 && (
+              {commentStyle === "margin" && notes.length > 0 && (
                 <div className="margin-col">
                   {notes.map((a) => (
-                    <MarginCard key={a.id} a={a} active={activeIds.includes(a.id)} onOpen={() => onOpen([a.id])} />
+                    <MarginCard key={a.id} a={a} active={activeIds.includes(a.id)} onOpen={() => onOpen([a.id])} dot={tagColorOf?.(a)} />
                   ))}
                 </div>
               )}
             </div>
+            {commentStyle === "inline" && notes.length > 0 && (
+              <div className="inline-notes">
+                {notes.map((a) => (
+                  inlineOpenId === a.id
+                    ? <div className="inline-thread" key={a.id}>{renderInlineThread?.(a.id)}</div>
+                    : <button className="inline-note-bar" key={a.id} onClick={() => onOpen([a.id])}>
+                        <span className="dot" style={tagColorOf?.(a) ? { background: tagColorOf(a)! } : undefined} />
+                        <span className="inb-who">{a.authorName}</span>
+                        <span className="inb-prev">{a.body.length > 90 ? a.body.slice(0, 90) + "…" : a.body}</span>
+                        {a.replyCount > 0 && <span className="inb-count">{a.replyCount}</span>}
+                      </button>
+                ))}
+              </div>
+            )}
           </Fragment>
         );
       })}

@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import type { Annotation, AnnotationThread, Anchor, PublicUser, Reply } from "@/lib/types";
+import { usePrefs } from "@/lib/prefs";
+import { dotColor } from "@/lib/colors";
 
 interface Props {
   book: number;
@@ -38,7 +40,7 @@ export function CommentPanel(props: Props) {
         {mode === "create" ? (
           <CreateForm book={book} chapter={chapter} anchors={anchors} quote={quote} user={user} onClose={onClose} onChanged={onChanged} />
         ) : (
-          <ViewThreads ids={ids} user={user} onChanged={onChanged} />
+          <CommentThreads ids={ids} user={user} onChanged={onChanged} />
         )}
       </aside>
     </>
@@ -48,23 +50,38 @@ export function CommentPanel(props: Props) {
 function CreateForm({ anchors, quote, user, onClose, onChanged }: {
   book: number; chapter: number; anchors: Anchor[]; quote: string; user: PublicUser | null; onClose: () => void; onChanged: () => void;
 }) {
+  const { prefs } = usePrefs();
   const [body, setBody] = useState("");
   const [tags, setTags] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [asName, setAsName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const book = (anchors[0]?.blockId.match(/^b(\d+)/) || [])[1];
   const chapter = (anchors[0]?.blockId.match(/\.c(\d+)/) || [])[1];
 
+  useEffect(() => {
+    if (!prefs.quickTags) return;
+    fetch("/api/tags").then((r) => r.json()).then((j) => setAllTags((j.tags || []).map((t: { tag: string }) => t.tag))).catch(() => {});
+    fetch("/api/admin/tag-colors").then((r) => r.json()).then((j) => setTagColors(j.colors || {})).catch(() => {});
+  }, [prefs.quickTags]);
+
+  function toggleTag(t: string) {
+    setPicked((prev) => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
+  }
+
   async function submit() {
     if (!body.trim()) { setErr("Write a comment first."); return; }
     setBusy(true); setErr("");
+    const combined = [...picked, ...tags.split(",").map((t) => t.trim()).filter(Boolean)];
     const r = await fetch("/api/annotations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         book: Number(book), chapter: Number(chapter), anchors, quote, body: body.trim(),
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: combined,
         asName: user?.isAdmin ? asName.trim() : undefined,
       }),
     });
@@ -81,7 +98,21 @@ function CreateForm({ anchors, quote, user, onClose, onChanged }: {
         <textarea className="field" rows={6} value={body} autoFocus
           onChange={(e) => setBody(e.target.value)} placeholder="What do you make of this passage?" />
         <div style={{ height: ".8rem" }} />
-        <label className="field-label">Tags (comma-separated — e.g. slavery, the-state, virtue)</label>
+        {prefs.quickTags && allTags.length > 0 && (
+          <div className="quick-tags">
+            {allTags.map((t) => {
+              const dot = prefs.categoricalColors ? dotColor(tagColors[t]) : undefined;
+              return (
+                <button key={t} type="button" className={`tag-chip-pick${picked.has(t) ? " active" : ""}`}
+                  style={picked.has(t) && dot ? { borderColor: dot, color: dot } : undefined}
+                  onClick={() => toggleTag(t)}>
+                  {dot && <span className="tc-dot" style={{ background: dot }} />}#{t}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <label className="field-label">{prefs.quickTags ? "More tags (comma-separated)" : "Tags (comma-separated — e.g. slavery, the-state, virtue)"}</label>
         <input className="field" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="optional" />
         {user?.isAdmin && (
           <div className="admin-field">
@@ -99,7 +130,7 @@ function CreateForm({ anchors, quote, user, onClose, onChanged }: {
   );
 }
 
-function ViewThreads({ ids, user, onChanged }: {
+export function CommentThreads({ ids, user, onChanged }: {
   ids: string[]; user: PublicUser | null; onChanged: () => void;
 }) {
   const [threads, setThreads] = useState<AnnotationThread[] | null>(null);
