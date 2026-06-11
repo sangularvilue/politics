@@ -133,16 +133,22 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 /* ---------- Reading view ---------- */
 .reader-area { display: flex; flex-direction: column; min-height: calc(100vh - 60px); }
 .reader-bar {
-  position: sticky; top: 60px; z-index: 40; display: flex; align-items: center; gap: 1rem;
+  position: sticky; top: 60px; z-index: 40; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap;
   padding: .6rem clamp(1rem, 4vw, 2.5rem); background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px); border-bottom: 1px solid var(--border-soft);
 }
-.reader-bar .rt-label { font-size: .85rem; color: var(--ink-soft); }
+.reader-bar .rt-label { font-size: .85rem; color: var(--ink-soft); flex: 1 1 auto; }
+.comments-toggle {
+  border: 1px solid var(--border); background: var(--bg-sunken); color: var(--ink-faint);
+  font-family: var(--font-sans); font-size: .78rem; padding: .35rem .8rem; border-radius: 999px; cursor: pointer; transition: all .18s; white-space: nowrap;
+}
+.comments-toggle:hover { color: var(--ink-soft); }
+.comments-toggle.active { border-color: var(--accent-deep); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .reader-bar .rt-label a { color: var(--ink); }
 .reader-bar .rt-label a:hover { color: var(--accent); }
 .reader-bar .rt-bekker { color: var(--ink-ghost); font-size: .7rem; }
 @media (max-width: 560px) { .reader-bar .rt-bekker { display: none; } }
-.mode-switch { margin-left: auto; display: inline-flex; background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: 999px; padding: 2px; }
+.mode-switch { display: inline-flex; background: var(--bg-sunken); border: 1px solid var(--border-soft); border-radius: 999px; padding: 2px; }
 .mode-switch button {
   border: none; background: none; color: var(--ink-faint); cursor: pointer;
   font-family: var(--font-sans); font-size: .8rem; padding: .35rem .85rem; border-radius: 999px; transition: all .18s;
@@ -153,6 +159,31 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .reader-content { flex: 1; padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 5vw, 2rem) 6rem; }
 .reader-area[data-mode="page"] .reader-content { padding: 0; }
 .reader-col { max-width: 720px; margin: 0 auto; }
+
+/* ---- marginalia: comments beside the text ---- */
+.para-row { /* single column by default (narrow screens, page mode, comments off) */ }
+.margin-col { display: none; }
+/* wide screens, chapter/scroll mode, comments on → text + right margin gutter */
+@media (min-width: 1080px) {
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .reader-col { max-width: 1060px; }
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .para-row {
+    display: grid; grid-template-columns: minmax(0, 680px) 300px; gap: 2.4rem; align-items: start;
+  }
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .chapter-head,
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .chapter-nav,
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .inline-chapter { max-width: 680px; }
+  .reader-area[data-comments="on"]:not([data-mode="page"]) .margin-col { display: flex; flex-direction: column; gap: .6rem; padding-top: .4rem; }
+}
+.margin-card {
+  text-align: left; cursor: pointer; background: var(--bg-raised); border: 1px solid var(--border-soft);
+  border-left: 2px solid var(--accent-warm); border-radius: 8px; padding: .6rem .7rem; transition: all .18s; font-family: var(--font-sans);
+}
+.margin-card:hover { border-color: var(--accent-deep); border-left-color: var(--accent-warm); transform: translateX(-2px); }
+.margin-card.active { border-color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised)); }
+.margin-card .mc-who { font-size: .76rem; font-weight: 600; color: var(--ink); margin-bottom: .2rem; }
+.margin-card .mc-body { font-family: var(--font-serif); font-size: .86rem; line-height: 1.45; color: var(--ink-soft); }
+.margin-card .mc-foot { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; font-size: .68rem; color: var(--ink-faint); }
+.margin-card .mc-tag { font-family: var(--font-mono); color: var(--accent); }
 
 .inline-chapter {
   font-family: var(--font-serif); font-size: 1.5rem; color: var(--ink);

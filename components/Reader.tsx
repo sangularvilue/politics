@@ -25,6 +25,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
 export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId, focusBlockId }: Props) {
   const [mode, setMode] = useState<Mode>("chapter");
+  const [showComments, setShowComments] = useState(true);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [toolbar, setToolbar] = useState<{ x: number; y: number; anchors: Anchor[]; quote: string } | null>(null);
   const [panel, setPanel] = useState<
@@ -40,12 +41,14 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   useEffect(() => {
     const saved = (typeof localStorage !== "undefined" && localStorage.getItem("pol-readmode")) as Mode | null;
     if (saved === "chapter" || saved === "scroll" || saved === "page") setMode(saved);
+    try { if (localStorage.getItem("pol-comments") === "off") setShowComments(false); } catch {}
     const onR = () => setIsMobile(window.innerWidth < 640);
     onR(); window.addEventListener("resize", onR);
     return () => window.removeEventListener("resize", onR);
   }, []);
 
   function changeMode(m: Mode) { setMode(m); setToolbar(null); try { localStorage.setItem("pol-readmode", m); } catch {} }
+  function toggleComments() { setShowComments((v) => { const nv = !v; try { localStorage.setItem("pol-comments", nv ? "on" : "off"); } catch {} return nv; }); }
 
   const refresh = useCallback(async () => {
     const r = await fetch(`/api/annotations?book=${book.book}`);
@@ -80,6 +83,17 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     }
     return map;
   }, [annotations, user]);
+
+  // group annotations under the paragraph where their highlight begins (for the margin)
+  const notesByBlock = useMemo(() => {
+    const map: Record<string, Annotation[]> = {};
+    for (const a of annotations) {
+      const first = a.anchors[0]?.blockId;
+      if (first) (map[first] ||= []).push(a);
+    }
+    for (const k in map) map[k].sort((x, y) => x.createdAt - y.createdAt);
+    return map;
+  }, [annotations]);
 
   // ----- selection (mouse + touch) -----
   const evaluate = useCallback(() => {
@@ -157,19 +171,28 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
 
   const blocksEl = (
     <Blocks blocks={view.blocks} rangesByBlock={rangesByBlock} activeIds={activeIds}
-      onMarkClick={openView} firstOfChapter={view.firstOfChapter} headings={view.headings} />
+      onMarkClick={openView} firstOfChapter={view.firstOfChapter} headings={view.headings}
+      showComments={showComments} notesByBlock={notesByBlock} onOpen={openView} />
   );
 
   const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
 
   return (
-    <div className="reader-area" data-mode={mode}>
+    <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"}>
       <div className="reader-bar">
         <div className="rt-label">
           <Link href="/browse">{book.title}</Link>
           {mode === "chapter" && <> · Chapter {currentChapter}</>}
           <span className="mono rt-bekker"> · Bekker {book.bekker}</span>
         </div>
+        <button
+          className={`comments-toggle${showComments ? " active" : ""}`}
+          onClick={toggleComments}
+          aria-pressed={showComments}
+          title={showComments ? "Hide comments" : "Show comments"}
+        >
+          💬 {showComments ? "Comments on" : "Comments off"}
+        </button>
         <div className="mode-switch" role="tablist" aria-label="Reading mode">
           {([["chapter", "Chapter"], ["scroll", "Scroll"], ["page", "Pages"]] as [Mode, string][]).map(([m, label]) => (
             <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)} aria-pressed={mode === m}>{label}</button>
