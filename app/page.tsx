@@ -5,8 +5,7 @@ export default function Home() {
   return (
     <div className="wrap">
       <section className="hero">
-        <div className="greek-title">Πολιτικά</div>
-        <div className="en-title">Aristotle&rsquo;s Politics</div>
+        <h1 className="greek-title">Aristotle&rsquo;s Politics</h1>
         <div className="byline">
           translated by <b>Benjamin Jowett</b> · eight books
         </div>

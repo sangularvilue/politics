@@ -1,168 +1,207 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from "react";
-import type { Annotation, Anchor, Block, PublicUser } from "@/lib/types";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import Link from "next/link";
+import type { Annotation, Anchor, Block, Book, PublicUser } from "@/lib/types";
+import { Blocks, type Range3 } from "./Blocks";
+import { PagedView } from "./PagedView";
 import { CommentPanel } from "./CommentPanel";
+import { selectionToAnchors, parseBlockId } from "@/lib/selection";
+
+type Mode = "chapter" | "scroll" | "page";
+interface Ref2 { book: number; chapter: number }
 
 interface Props {
-  book: number;
-  chapter: number;
-  blocks: Block[];
+  book: Book;
+  currentChapter: number;
+  prev: Ref2 | null;
+  next: Ref2 | null;
   initialAnnotations: Annotation[];
   user: PublicUser | null;
   openId?: string;
 }
 
-interface Range3 { start: number; end: number; id: string; mine: boolean }
-interface Seg { text: string; ids: string[]; mine: boolean }
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
-function segmentBlock(text: string, ranges: Range3[]): Seg[] {
-  if (!ranges.length) return [{ text, ids: [], mine: false }];
-  const points = new Set<number>([0, text.length]);
-  for (const r of ranges) { points.add(Math.max(0, r.start)); points.add(Math.min(text.length, r.end)); }
-  const sorted = [...points].sort((a, b) => a - b);
-  const segs: Seg[] = [];
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const s = sorted[i], e = sorted[i + 1];
-    if (s >= e) continue;
-    const covering = ranges.filter((r) => r.start <= s && r.end >= e);
-    segs.push({ text: text.slice(s, e), ids: covering.map((r) => r.id), mine: covering.some((r) => r.mine) });
-  }
-  return segs;
-}
-
-/** char offset from the start of blockEl to (node, offset). */
-function offsetWithin(blockEl: HTMLElement, node: Node, offset: number): number {
-  const r = document.createRange();
-  r.selectNodeContents(blockEl);
-  r.setEnd(node, offset);
-  return r.toString().length;
-}
-
-export function Reader({ book, chapter, blocks, initialAnnotations, user, openId }: Props) {
+export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId }: Props) {
+  const [mode, setMode] = useState<Mode>("chapter");
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [toolbar, setToolbar] = useState<{ x: number; y: number; anchors: Anchor[]; quote: string } | null>(null);
   const [panel, setPanel] = useState<
-    | { mode: "create"; anchors: Anchor[]; quote: string }
+    | { mode: "create"; book: number; chapter: number; anchors: Anchor[]; quote: string }
     | { mode: "view"; ids: string[] }
     | null
   >(null);
+  const [isMobile, setIsMobile] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const renderedRef = useRef<Block[]>([]);
 
   useEffect(() => { setAnnotations(initialAnnotations); }, [initialAnnotations]);
-
-  // Deep-link: open a specific annotation and scroll its passage into view.
   useEffect(() => {
-    if (!openId) return;
-    const a = initialAnnotations.find((x) => x.id === openId);
-    if (!a) return;
-    setPanel({ mode: "view", ids: [openId] });
-    const el = document.querySelector<HTMLElement>(`[data-block-id="${a.anchors[0]?.blockId}"]`);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openId]);
+    const saved = (typeof localStorage !== "undefined" && localStorage.getItem("pol-readmode")) as Mode | null;
+    if (saved === "chapter" || saved === "scroll" || saved === "page") setMode(saved);
+    const onR = () => setIsMobile(window.innerWidth < 640);
+    onR(); window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, []);
+
+  function changeMode(m: Mode) { setMode(m); setToolbar(null); try { localStorage.setItem("pol-readmode", m); } catch {} }
 
   const refresh = useCallback(async () => {
-    const r = await fetch(`/api/annotations?book=${book}&chapter=${chapter}`);
+    const r = await fetch(`/api/annotations?book=${book.book}`);
     const j = await r.json();
     setAnnotations(j.annotations || []);
-  }, [book, chapter]);
+  }, [book.book]);
 
-  // Build per-block ranges from anchors.
-  const rangesByBlock: Record<string, Range3[]> = {};
-  for (const a of annotations) {
-    for (const an of a.anchors) {
-      (rangesByBlock[an.blockId] ||= []).push({
-        start: an.start, end: an.end, id: a.id, mine: !!user && a.userId === user.id,
-      });
+  // ----- build the flat block list for the active mode -----
+  const view = useMemo(() => {
+    if (mode === "chapter") {
+      const ch = book.chapters.find((c) => c.chapter === currentChapter);
+      const blocks = ch ? ch.blocks : [];
+      return { blocks, firstOfChapter: new Set<number>(blocks.length ? [0] : []), headings: {} as Record<number, { chapter: number }> };
     }
-  }
-
-  const onMouseUp = useCallback(() => {
-    const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) { setToolbar(null); return; }
-    const range = sel.getRangeAt(0);
-    const startEl = (range.startContainer.parentElement as HTMLElement)?.closest<HTMLElement>("[data-block-id]");
-    const endEl = (range.endContainer.parentElement as HTMLElement)?.closest<HTMLElement>("[data-block-id]");
-    if (!startEl || !endEl || !containerRef.current?.contains(startEl)) { setToolbar(null); return; }
-
-    const startIdx = Number(startEl.dataset.blockIdx);
-    const endIdx = Number(endEl.dataset.blockIdx);
-    const [lo, hi] = startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
-    const lowEl = lo === startIdx ? startEl : endEl;
-    const highEl = hi === endIdx ? endEl : startEl;
-    const lowOff = offsetWithin(lowEl, lo === startIdx ? range.startContainer : range.endContainer, lo === startIdx ? range.startOffset : range.endOffset);
-    const highOff = offsetWithin(highEl, hi === endIdx ? range.endContainer : range.startContainer, hi === endIdx ? range.endOffset : range.startOffset);
-
-    const anchors: Anchor[] = [];
-    for (let i = lo; i <= hi; i++) {
-      const b = blocks[i];
-      const s = i === lo ? lowOff : 0;
-      const e = i === hi ? highOff : b.text.length;
-      if (e > s) anchors.push({ blockId: b.id, start: s, end: e });
+    const blocks: Block[] = [];
+    const firstOfChapter = new Set<number>();
+    const headings: Record<number, { chapter: number }> = {};
+    for (const ch of book.chapters) {
+      firstOfChapter.add(blocks.length);
+      headings[blocks.length] = { chapter: ch.chapter };
+      blocks.push(...ch.blocks);
     }
-    const quote = sel.toString().replace(/\s+/g, " ").trim();
-    if (!anchors.length || !quote) { setToolbar(null); return; }
+    return { blocks, firstOfChapter, headings };
+  }, [mode, book, currentChapter]);
 
-    const rect = range.getBoundingClientRect();
-    const host = containerRef.current.getBoundingClientRect();
-    setToolbar({
-      x: rect.left - host.left + rect.width / 2,
-      y: rect.top - host.top - 8,
-      anchors, quote,
-    });
-  }, [blocks]);
+  renderedRef.current = view.blocks;
+
+  const rangesByBlock = useMemo(() => {
+    const map: Record<string, Range3[]> = {};
+    for (const a of annotations) for (const an of a.anchors) {
+      (map[an.blockId] ||= []).push({ start: an.start, end: an.end, id: a.id, mine: !!user && a.userId === user.id });
+    }
+    return map;
+  }, [annotations, user]);
+
+  // ----- selection (mouse + touch) -----
+  const evaluate = useCallback(() => {
+    if (!containerRef.current) return;
+    const res = selectionToAnchors(containerRef.current, renderedRef.current);
+    if (!res) { setToolbar(null); return; }
+    setToolbar({ x: res.rect.left + res.rect.width / 2, y: res.rect.top, anchors: res.anchors, quote: res.quote });
+  }, []);
+
+  useEffect(() => {
+    const onUp = () => setTimeout(evaluate, 0);
+    let t: ReturnType<typeof setTimeout>;
+    const onSel = () => { clearTimeout(t); t = setTimeout(evaluate, 350); };
+    document.addEventListener("mouseup", onUp);
+    document.addEventListener("touchend", onUp);
+    document.addEventListener("selectionchange", onSel);
+    return () => {
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("touchend", onUp);
+      document.removeEventListener("selectionchange", onSel);
+      clearTimeout(t);
+    };
+  }, [evaluate]);
 
   function openCreate() {
     if (!toolbar) return;
     if (!user) { window.location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
-    setPanel({ mode: "create", anchors: toolbar.anchors, quote: toolbar.quote });
+    const meta = parseBlockId(toolbar.anchors[0].blockId);
+    if (!meta) return;
+    setPanel({ mode: "create", book: meta.book, chapter: meta.chapter, anchors: toolbar.anchors, quote: toolbar.quote });
     setToolbar(null);
     window.getSelection()?.removeAllRanges();
   }
 
-  function openView(ids: string[]) {
-    if (!ids.length) return;
-    setPanel({ mode: "view", ids });
-  }
-
+  function openView(ids: string[]) { if (ids.length) setPanel({ mode: "view", ids }); }
   const activeIds = panel?.mode === "view" ? panel.ids : [];
 
+  // deep link
+  const jumpedRef = useRef(false);
+  useEffect(() => {
+    if (jumpedRef.current || !openId) return;
+    const a = initialAnnotations.find((x) => x.id === openId);
+    if (!a) return;
+    jumpedRef.current = true;
+    setPanel({ mode: "view", ids: [openId] });
+    setTimeout(() => {
+      document.querySelector<HTMLElement>(`[data-block-id="${a.anchors[0]?.blockId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+  }, [openId, initialAnnotations]);
+
+  // scroll to current chapter when entering scroll mode
+  useEffect(() => {
+    if (mode !== "scroll") return;
+    const id = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
+    if (!id || currentChapter === 1) return;
+    setTimeout(() => document.querySelector<HTMLElement>(`[data-block-id="${id}"]`)?.scrollIntoView({ block: "start" }), 60);
+  }, [mode, book, currentChapter]);
+
+  const blocksEl = (
+    <Blocks blocks={view.blocks} rangesByBlock={rangesByBlock} activeIds={activeIds}
+      onMarkClick={openView} firstOfChapter={view.firstOfChapter} headings={view.headings} />
+  );
+
+  const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
+
   return (
-    <div ref={containerRef} style={{ position: "relative" }} onMouseUp={onMouseUp}>
-      {blocks.map((b, idx) => {
-        const segs = segmentBlock(b.text, rangesByBlock[b.id] || []);
-        return (
-          <div className={`para${idx === 0 ? " first" : ""}`} key={b.id}>
-            <div className="pnum mono">{b.n}</div>
-            <div className="ptext" data-block-id={b.id} data-block-idx={idx}>
-              {segs.map((s, i) =>
-                s.ids.length ? (
-                  <mark
-                    key={i}
-                    className={`${s.mine ? "mine" : ""} ${s.ids.some((id) => activeIds.includes(id)) ? "active" : ""}`}
-                    onClick={(e) => { e.stopPropagation(); openView(s.ids); }}
-                  >
-                    {s.text}
-                  </mark>
-                ) : (
-                  <span key={i}>{s.text}</span>
-                )
-              )}
-            </div>
+    <div className="reader-area" data-mode={mode}>
+      <div className="reader-bar">
+        <div className="rt-label">
+          <Link href="/browse">{book.title}</Link>
+          {mode === "chapter" && <> · Chapter {currentChapter}</>}
+          <span className="mono rt-bekker"> · Bekker {book.bekker}</span>
+        </div>
+        <div className="mode-switch" role="tablist" aria-label="Reading mode">
+          {([["chapter", "Chapter"], ["scroll", "Scroll"], ["page", "Pages"]] as [Mode, string][]).map(([m, label]) => (
+            <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)} aria-pressed={mode === m}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div ref={containerRef} className="reader-content">
+        {mode === "chapter" && (
+          <div className="reader-col">
+            <header className="chapter-head">
+              <div className="bk">{book.title} · Chapter {currentChapter}</div>
+              <h1>Chapter {currentChapter}</h1>
+              {currentChapter === 1 && <div className="theme">{book.theme}</div>}
+              <div className="bekker">Bekker {book.bekker} · cite as {ROMAN[book.book]}.{currentChapter}.¶</div>
+            </header>
+            {blocksEl}
+            <nav className="chapter-nav">
+              {prev ? <Link href={`/read/${prev.book}/${prev.chapter}`}><span className="lbl">Previous</span>{ROMAN[prev.book]}. Chapter {prev.chapter}</Link> : <span />}
+              {next ? <Link href={`/read/${next.book}/${next.chapter}`} style={{ textAlign: "right" }}><span className="lbl">Next</span>{ROMAN[next.book]}. Chapter {next.chapter}</Link> : <span />}
+            </nav>
           </div>
-        );
-      })}
+        )}
+
+        {mode === "scroll" && (
+          <div className="reader-col">
+            <header className="chapter-head"><div className="bk">{book.title}</div><h1>{book.title}</h1><div className="theme">{book.theme}</div><div className="bekker">Bekker {book.bekker}</div></header>
+            {blocksEl}
+          </div>
+        )}
+
+        {mode === "page" && <PagedView jumpToBlockId={jumpId}>{blocksEl}</PagedView>}
+      </div>
 
       {toolbar && (
-        <button className="sel-toolbar" style={{ left: toolbar.x, top: toolbar.y }} onMouseDown={(e) => e.preventDefault()} onClick={openCreate}>
+        <button
+          className={isMobile ? "sel-toolbar mobile" : "sel-toolbar"}
+          style={isMobile ? undefined : { left: toolbar.x, top: toolbar.y }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={openCreate}
+        >
           ✎ Annotate
         </button>
       )}
 
       {panel && (
         <CommentPanel
-          book={book}
-          chapter={chapter}
+          book={panel.mode === "create" ? panel.book : book.book}
+          chapter={panel.mode === "create" ? panel.chapter : currentChapter}
           mode={panel.mode}
           anchors={panel.mode === "create" ? panel.anchors : []}
           quote={panel.mode === "create" ? panel.quote : ""}

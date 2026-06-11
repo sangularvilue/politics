@@ -27,8 +27,8 @@ export function SiteHeader() {
   return (
     <header className="site-header">
       <Link href="/" className="brand">
-        <span className="greek">Πολιτικά</span>
-        <span className="latin">Politics</span>
+        <span className="brand-title">Aristotle&rsquo;s Politics</span>
+        <span className="latin">tr. Jowett</span>
       </Link>
       <nav className="nav">
         <Link href="/read/1/1" className={is("/read")}>Read</Link>
