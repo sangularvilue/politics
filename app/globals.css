@@ -265,6 +265,14 @@ textarea.field, input.field {
 textarea.field:focus, input.field:focus { outline: none; border-color: var(--accent); }
 .field-label { font-size: .75rem; color: var(--ink-faint); margin-bottom: .35rem; display: block; }
 
+/* ---------- Search ---------- */
+.search-field { font-size: 1.15rem; padding: .9rem 1.1rem; font-family: var(--font-serif); }
+.search-section { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: .7rem; }
+mark.hl { background: var(--hl-strong); color: var(--ink); padding: 0 .1em; border-radius: 2px; }
+/* transient flash when a search result scrolls a passage into view */
+@keyframes flash { 0% { background: var(--hl-strong); } 100% { background: transparent; } }
+.para.focus-flash .ptext { animation: flash 2.4s ease-out; border-radius: 3px; }
+
 .muted { color: var(--ink-faint); }
 .center { text-align: center; }
 .empty { color: var(--ink-faint); font-family: var(--font-serif); font-style: italic; text-align: center; padding: 2rem 0; }

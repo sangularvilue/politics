@@ -13,10 +13,10 @@ export async function generateMetadata({ params }: { params: Promise<{ book: str
 
 export default async function ReadPage({ params, searchParams }: {
   params: Promise<{ book: string; chapter: string }>;
-  searchParams: Promise<{ a?: string }>;
+  searchParams: Promise<{ a?: string; b?: string }>;
 }) {
   const { book: bStr, chapter: cStr } = await params;
-  const { a: openId } = await searchParams;
+  const { a: openId, b: focusBlockId } = await searchParams;
   const book = Number(bStr), chapter = Number(cStr);
   const bk = getBook(book);
   const ch = getChapter(book, chapter);
@@ -34,6 +34,7 @@ export default async function ReadPage({ params, searchParams }: {
       initialAnnotations={annotations}
       user={user}
       openId={openId}
+      focusBlockId={focusBlockId}
     />
   );
 }

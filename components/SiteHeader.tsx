@@ -33,6 +33,7 @@ export function SiteHeader() {
       <nav className="nav">
         <Link href="/read/1/1" className={is("/read")}>Read</Link>
         <Link href="/browse" className={is("/browse")}>Browse</Link>
+        <Link href="/search" className={`icon-btn ${is("/search")}`} title="Search" aria-label="Search">⌕</Link>
         <Link href="/about" className={is("/about")}>About</Link>
         <button className="icon-btn" onClick={toggleTheme} title="Toggle reading surface" aria-label="Toggle theme">
           {theme === "ink" ? "☾" : "☀"}

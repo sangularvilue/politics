@@ -18,11 +18,12 @@ interface Props {
   initialAnnotations: Annotation[];
   user: PublicUser | null;
   openId?: string;
+  focusBlockId?: string;
 }
 
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 
-export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId }: Props) {
+export function Reader({ book, currentChapter, prev, next, initialAnnotations, user, openId, focusBlockId }: Props) {
   const [mode, setMode] = useState<Mode>("chapter");
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [toolbar, setToolbar] = useState<{ x: number; y: number; anchors: Anchor[]; quote: string } | null>(null);
@@ -129,6 +130,22 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 150);
   }, [openId, initialAnnotations]);
+
+  // jump to a passage from a text search result, and flash it
+  const flashedRef = useRef(false);
+  useEffect(() => {
+    if (flashedRef.current || !focusBlockId) return;
+    const t = setTimeout(() => {
+      const ptext = document.querySelector<HTMLElement>(`[data-block-id="${focusBlockId}"]`);
+      const para = ptext?.closest<HTMLElement>(".para");
+      if (!ptext) return;
+      flashedRef.current = true;
+      ptext.scrollIntoView({ behavior: "smooth", block: "center" });
+      para?.classList.add("focus-flash");
+      setTimeout(() => para?.classList.remove("focus-flash"), 2600);
+    }, 200);
+    return () => clearTimeout(t);
+  }, [focusBlockId, mode]);
 
   // scroll to current chapter when entering scroll mode
   useEffect(() => {

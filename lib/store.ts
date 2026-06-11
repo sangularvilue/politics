@@ -146,6 +146,54 @@ export async function addReply(
   return reply;
 }
 
+// ---- search across comments ----
+export interface CommentHit {
+  annotationId: string;
+  book: number;
+  chapter: number;
+  authorName: string;
+  kind: "comment" | "quote" | "tag" | "reply";
+  snippet: string;
+  cite: string;
+}
+
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+
+function snippetAround(text: string, needle: string, pad = 70): string {
+  const i = text.toLowerCase().indexOf(needle);
+  if (i < 0) return text.slice(0, 160);
+  const from = Math.max(0, i - pad);
+  const to = Math.min(text.length, i + needle.length + pad + 40);
+  return (from > 0 ? "…" : "") + text.slice(from, to).trim() + (to < text.length ? "…" : "");
+}
+
+export async function searchAnnotations(q: string, limit = 60): Promise<CommentHit[]> {
+  const needle = q.trim().toLowerCase();
+  if (needle.length < 2) return [];
+  const ids = await redis.zrange<string[]>(idxAll(), 0, 999, { rev: true });
+  const annots = await hydrate(ids);
+  if (!annots.length) return [];
+
+  const p = redis.pipeline();
+  for (const a of annots) p.lrange(repliesKey(a.id), 0, -1);
+  const replyLists = (await p.exec()) as Reply[][];
+
+  const hits: CommentHit[] = [];
+  annots.forEach((a, i) => {
+    const cite = `${ROMAN[a.book]}.${a.chapter}`;
+    const push = (kind: CommentHit["kind"], snippet: string) => {
+      if (hits.length < limit) hits.push({ annotationId: a.id, book: a.book, chapter: a.chapter, authorName: a.authorName, kind, snippet, cite });
+    };
+    if (a.body.toLowerCase().includes(needle)) push("comment", snippetAround(a.body, needle));
+    else if (a.quote.toLowerCase().includes(needle)) push("quote", "“" + snippetAround(a.quote, needle) + "”");
+    else if (a.tags.some((t) => t.includes(needle))) push("tag", a.tags.map((t) => `#${t}`).join(" "));
+    for (const rp of replyLists[i] || []) {
+      if (rp.body?.toLowerCase().includes(needle)) push("reply", snippetAround(rp.body, needle));
+    }
+  });
+  return hits;
+}
+
 // ---- delete (owner only) ----
 export async function deleteAnnotation(id: string, userId: string): Promise<boolean> {
   const a = await getAnnotation(id);
