@@ -57,6 +57,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
         </button>
       </form>
+      {mode === "login" && (
+        <p className="alt" style={{ marginTop: ".7rem" }}><Link href="/forgot">Forgot your password?</Link></p>
+      )}
       <p className="alt">
         {mode === "login" ? (
           <>New here? <Link href={`/register?next=${encodeURIComponent(next)}`}>Create an account</Link></>

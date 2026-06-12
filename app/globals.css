@@ -183,6 +183,11 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .pref-toggle.on .knob::after { transform: translateX(14px); background: var(--on-accent); }
 .pref-toggle.on { color: var(--text); }
 
+/* ---------- Export popover ---------- */
+.export-pop { position: absolute; top: calc(100% + 10px); right: 0; width: 244px; z-index: 80; background: var(--popup-bg); border: 1px solid var(--popup-border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.30); padding: 13px; display: flex; flex-direction: column; gap: 12px; }
+.pref-seg.vert { flex-direction: column; gap: 2px; }
+.pref-seg.vert button { text-align: left; }
+
 /* ---------- Reading progress bar ---------- */
 .reading-progress-track { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 200; background: transparent; }
 .reading-progress-fill { height: 100%; background: var(--accent); transition: width .25s ease; }

@@ -24,4 +24,5 @@ export const idxUser = (userId: string) => `politics:annots:user:${userId}`;
 export const tagsKey = () => `politics:tags`; // sorted set tag -> count
 export const authorsKey = () => `politics:authors`; // sorted set userId -> annotation count
 export const prefsKey = (userId: string) => `politics:user:${userId}:prefs`; // reading prefs hash
+export const resetKey = (token: string) => `politics:reset:${token}`; // password reset token
 export const tagColorsKey = () => `politics:tag-colors`; // hash tag -> color name

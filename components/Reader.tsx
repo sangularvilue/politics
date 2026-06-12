@@ -6,6 +6,7 @@ import { Blocks, type Range3 } from "./Blocks";
 import { PagedView } from "./PagedView";
 import { CommentPanel, CommentThreads } from "./CommentPanel";
 import { ProgressBar } from "./ProgressBar";
+import { ExportMenu } from "./ExportMenu";
 import { selectionToAnchors, parseBlockId } from "@/lib/selection";
 import { usePrefs } from "@/lib/prefs";
 import { hlBg, dotColor } from "@/lib/colors";
@@ -127,7 +128,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
 
   function openCreate() {
     if (!toolbar) return;
-    if (!user) { window.location.href = `/login?next=${encodeURIComponent(location.pathname)}`; return; }
+    if (!user) { window.location.href = `/register?next=${encodeURIComponent(location.pathname)}`; return; }
     const meta = parseBlockId(toolbar.anchors[0].blockId);
     if (!meta) return;
     setPanel({ mode: "create", book: meta.book, chapter: meta.chapter, anchors: toolbar.anchors, quote: toolbar.quote });
@@ -225,6 +226,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         >
           💬 {showComments ? "Comments on" : "Comments off"}
         </button>
+        <ExportMenu book={book.book} chapter={currentChapter} />
         <div className="mode-switch" role="tablist" aria-label="Reading mode">
           {([["chapter", "Chapter"], ["scroll", "Scroll"], ["page", "Pages"]] as [Mode, string][]).map(([m, label]) => (
             <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)} aria-pressed={mode === m}>{label}</button>
