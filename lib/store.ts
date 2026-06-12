@@ -158,7 +158,7 @@ export async function addReply(
 // ---- edit / delete: annotations (owner or admin) ----
 export async function updateAnnotation(
   id: string,
-  patch: { body?: string; tags?: string[]; author?: Author },
+  patch: { body?: string; tags?: string[]; author?: Author; anchors?: Anchor[]; quote?: string },
   requester: Requester
 ): Promise<Annotation | null | "forbidden"> {
   const a = await getAnnotation(id);
@@ -169,6 +169,10 @@ export async function updateAnnotation(
   const p = redis.pipeline();
 
   if (typeof patch.body === "string") a.body = patch.body.slice(0, 8000);
+  if (patch.anchors && patch.anchors.length) {
+    a.anchors = patch.anchors;
+    if (typeof patch.quote === "string") a.quote = patch.quote.slice(0, 2000);
+  }
 
   if (patch.tags) {
     const newTags = normalizeTags(patch.tags);

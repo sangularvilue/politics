@@ -16,6 +16,7 @@ interface Props {
   user: PublicUser | null;
   onClose: () => void;
   onChanged: () => void;
+  onReanchor?: (id: string) => void;
 }
 
 function timeAgo(ts: number): string {
@@ -28,7 +29,7 @@ function timeAgo(ts: number): string {
 }
 
 export function CommentPanel(props: Props) {
-  const { mode, quote, anchors, ids, book, chapter, user, onClose, onChanged } = props;
+  const { mode, quote, anchors, ids, book, chapter, user, onClose, onChanged, onReanchor } = props;
   return (
     <>
       <div className="panel-scrim" onClick={onClose} />
@@ -40,7 +41,7 @@ export function CommentPanel(props: Props) {
         {mode === "create" ? (
           <CreateForm book={book} chapter={chapter} anchors={anchors} quote={quote} user={user} onClose={onClose} onChanged={onChanged} />
         ) : (
-          <CommentThreads ids={ids} user={user} onChanged={onChanged} />
+          <CommentThreads ids={ids} user={user} onChanged={onChanged} onReanchor={onReanchor} />
         )}
       </aside>
     </>
@@ -130,8 +131,8 @@ function CreateForm({ anchors, quote, user, onClose, onChanged }: {
   );
 }
 
-export function CommentThreads({ ids, user, onChanged }: {
-  ids: string[]; user: PublicUser | null; onChanged: () => void;
+export function CommentThreads({ ids, user, onChanged, onReanchor }: {
+  ids: string[]; user: PublicUser | null; onChanged: () => void; onReanchor?: (id: string) => void;
 }) {
   const [threads, setThreads] = useState<AnnotationThread[] | null>(null);
 
@@ -148,7 +149,7 @@ export function CommentThreads({ ids, user, onChanged }: {
   return (
     <div className="panel-body">
       {threads.map((t) => (
-        <ThreadCard key={t.id} thread={t} user={user} reload={async () => { await load(); onChanged(); }} />
+        <ThreadCard key={t.id} thread={t} user={user} reload={async () => { await load(); onChanged(); }} onReanchor={onReanchor} />
       ))}
     </div>
   );
@@ -156,8 +157,8 @@ export function CommentThreads({ ids, user, onChanged }: {
 
 const canEdit = (user: PublicUser | null, ownerId: string) => !!user && (user.isAdmin || user.id === ownerId);
 
-function ThreadCard({ thread, user, reload }: {
-  thread: AnnotationThread; user: PublicUser | null; reload: () => Promise<void>;
+function ThreadCard({ thread, user, reload, onReanchor }: {
+  thread: AnnotationThread; user: PublicUser | null; reload: () => Promise<void>; onReanchor?: (id: string) => void;
 }) {
   const [replyTo, setReplyTo] = useState<string | null | "root">(null);
   const [editing, setEditing] = useState(false);
@@ -186,6 +187,7 @@ function ThreadCard({ thread, user, reload }: {
         <EditBox
           initialBody={thread.body} initialTags={thread.tags.join(", ")} initialAuthor={thread.authorName}
           isAdmin={!!user?.isAdmin} withTags
+          onReanchor={onReanchor && canEdit(user, thread.userId) ? () => onReanchor(thread.id) : undefined}
           onCancel={() => setEditing(false)}
           onSave={async (body, tags, asName) => {
             await fetch(`/api/annotations/${thread.id}`, {
@@ -297,9 +299,10 @@ function ReplyBox({ isAdmin, placeholder, onCancel, onSend }: {
   );
 }
 
-function EditBox({ initialBody, initialTags, initialAuthor, isAdmin, withTags, onCancel, onSave }: {
+function EditBox({ initialBody, initialTags, initialAuthor, isAdmin, withTags, onCancel, onSave, onReanchor }: {
   initialBody: string; initialTags?: string; initialAuthor: string; isAdmin: boolean; withTags?: boolean;
   onCancel: () => void; onSave: (body: string, tags: string[] | undefined, asName?: string) => Promise<void>;
+  onReanchor?: () => void;
 }) {
   const [body, setBody] = useState(initialBody);
   const [tags, setTags] = useState(initialTags || "");
@@ -310,6 +313,11 @@ function EditBox({ initialBody, initialTags, initialAuthor, isAdmin, withTags, o
       <textarea className="field" rows={5} autoFocus value={body} onChange={(e) => setBody(e.target.value)} />
       {withTags && <input className="field" style={{ marginTop: ".4rem" }} value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tags, comma-separated" />}
       {isAdmin && <input className="field" style={{ marginTop: ".4rem" }} value={asName} onChange={(e) => setAsName(e.target.value)} placeholder={`⚷ Reassign author (admin) — currently ${initialAuthor}`} />}
+      {onReanchor && (
+        <button className="reply-btn" style={{ marginTop: ".6rem", display: "block" }} onClick={onReanchor}>
+          ✎ Change highlighted region
+        </button>
+      )}
       <div style={{ display: "flex", gap: ".5rem", justifyContent: "flex-end", marginTop: ".5rem" }}>
         <button className="btn" onClick={onCancel}>Cancel</button>
         <button className="btn btn-primary" disabled={busy || !body.trim()} onClick={async () => {

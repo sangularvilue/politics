@@ -3,6 +3,7 @@ import { getBook } from "@/lib/text";
 import { listByBook, getReplies } from "@/lib/store";
 import { renderExport } from "@/lib/export";
 import { parseBlockId } from "@/lib/selection";
+import { currentUser } from "@/lib/auth";
 import type { Reply } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,9 @@ export async function GET(req: NextRequest) {
   const book = Number(sp.get("book"));
   const chapter = Number(sp.get("chapter"));
   const scope = sp.get("scope") || "chapter";   // chapter | book | upto
-  const comments = sp.get("comments") || "none"; // all | chapter | none
+  let comments = sp.get("comments") || "none"; // all | chapter | none
+  // comments are visible only to signed-in users
+  if (comments !== "none" && !(await currentUser())) comments = "none";
 
   const bk = getBook(book);
   if (!bk) return new Response("Unknown book.", { status: 400 });

@@ -290,25 +290,26 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .reader-area[data-mode="page"] .reader-content { padding: 0; }
 .reader-col { max-width: var(--reading-measure); margin: 0 auto; font-size: var(--reading-size); }
 
-/* ---- marginalia: comments beside the text ---- */
-.para-row { /* single column by default (narrow screens, page mode, comments off) */ }
-.margin-col { display: none; }
-/* wide screens, chapter/scroll mode, comments on → text + right margin gutter */
+/* ---- marginalia: comments aligned to their highlight ---- */
+.margin-layer { display: none; }
+/* wide screens, chapter/scroll mode, comments on → reserve a right gutter; cards
+   are absolutely positioned at each highlight's vertical position by MarginLayer. */
 @media (min-width: 1080px) {
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .reader-col { max-width: calc(var(--reading-measure) + 2.4rem + 300px); }
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .para-row {
-    display: grid; grid-template-columns: minmax(0, var(--reading-measure)) 300px; gap: 2.4rem; align-items: start;
+  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .reader-col {
+    position: relative;
+    max-width: calc(var(--reading-measure) + 2.4rem + 300px);
+    padding-right: calc(300px + 2.4rem);
   }
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .chapter-head,
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .chapter-nav,
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .inline-chapter { max-width: var(--reading-measure); }
-  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .margin-col { display: flex; flex-direction: column; gap: .6rem; padding-top: .4rem; }
+  .reader-area[data-comments="on"][data-comment-style="margin"]:not([data-mode="page"]) .margin-layer {
+    display: block; position: absolute; top: 0; right: 0; width: 300px;
+  }
+  .margin-layer .margin-card { position: absolute; left: 0; right: 0; }
 }
 .margin-card {
-  text-align: left; cursor: pointer; background: var(--bg-raised); border: 1px solid var(--border-soft);
-  border-left: 2px solid var(--accent-warm); border-radius: 8px; padding: .6rem .7rem; transition: all .18s; font-family: var(--font-sans);
+  display: block; text-align: left; cursor: pointer; background: var(--bg-raised); border: 1px solid var(--border-soft);
+  border-left: 2px solid var(--accent-warm); border-radius: 8px; padding: .6rem .7rem; transition: border-color .18s, background .18s; font-family: var(--font-sans);
 }
-.margin-card:hover { border-color: var(--accent-deep); border-left-color: var(--accent-warm); transform: translateX(-2px); }
+.margin-card:hover { border-color: var(--accent-deep); }
 .margin-card.active { border-color: var(--accent); border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised)); }
 .margin-card .mc-who { font-size: .76rem; font-weight: 600; color: var(--ink); margin-bottom: .2rem; }
 .margin-card .mc-body { font-family: var(--font-serif); font-size: .86rem; line-height: 1.45; color: var(--ink-soft); }
@@ -392,6 +393,17 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
   padding: .8rem 1.6rem; font-size: .95rem; box-shadow: 0 4px 24px rgba(0,0,0,.4);
 }
 .sel-toolbar.mobile::after { display: none; }
+
+/* re-anchor (edit highlighted region) banner */
+.reanchor-banner {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 96;
+  display: flex; align-items: center; gap: 1rem; max-width: min(90vw, 640px);
+  background: var(--accent); color: var(--on-accent); padding: .55rem .6rem .55rem 1.1rem;
+  border-radius: 999px; box-shadow: var(--shadow); font-size: .82rem;
+}
+.reanchor-banner i { opacity: .8; }
+.reanchor-banner .btn { background: rgba(0,0,0,.16); border-color: transparent; color: var(--on-accent); padding: .3rem .9rem; flex: 0 0 auto; }
+.reanchor-banner .btn:hover { background: rgba(0,0,0,.28); color: var(--on-accent); }
 
 /* ---------- Comment panel (slide-over) ---------- */
 .panel-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 80; animation: fade .2s ease; }

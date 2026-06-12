@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 type Scope = "chapter" | "book" | "upto";
 type Comments = "all" | "chapter" | "none";
 
-export function ExportMenu({ book, chapter }: { book: number; chapter: number }) {
+export function ExportMenu({ book, chapter, canComments = true }: { book: number; chapter: number; canComments?: boolean }) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<Scope>("chapter");
-  const [comments, setComments] = useState<Comments>("chapter");
+  const [comments, setComments] = useState<Comments>(canComments ? "chapter" : "none");
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -60,11 +60,15 @@ export function ExportMenu({ book, chapter }: { book: number; chapter: number })
           </div>
           <div className="pref-row">
             <label>Comments</label>
-            <div className="pref-seg vert">
-              {commentOpts.map(([v, l]) => (
-                <button key={v} className={comments === v ? "active" : ""} onClick={() => setComments(v)}>{l}</button>
-              ))}
-            </div>
+            {canComments ? (
+              <div className="pref-seg vert">
+                {commentOpts.map(([v, l]) => (
+                  <button key={v} className={comments === v ? "active" : ""} onClick={() => setComments(v)}>{l}</button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: ".78rem", margin: 0 }}>Sign in to include comments in exports.</p>
+            )}
           </div>
           <button className="btn btn-primary" style={{ width: "100%", marginTop: ".4rem" }} disabled={busy} onClick={download}>
             {busy ? "Preparing…" : "Download .txt"}

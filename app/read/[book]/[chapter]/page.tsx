@@ -24,9 +24,11 @@ export default async function ReadPage({ params, searchParams }: {
   const ch = getChapter(book, chapter);
   if (!bk || !ch) notFound();
 
-  const [annotations, user, stored] = await Promise.all([
-    listByBook(book), currentUser(), redis.hgetall<Record<string, string>>(tagColorsKey()),
+  const [user, stored] = await Promise.all([
+    currentUser(), redis.hgetall<Record<string, string>>(tagColorsKey()),
   ]);
+  // Comments are visible only to signed-in users.
+  const annotations = user ? await listByBook(book) : [];
   const tagColors = { ...DEFAULT_TAG_COLORS, ...(stored || {}) };
   const { prev, next } = neighbours(book, chapter);
 

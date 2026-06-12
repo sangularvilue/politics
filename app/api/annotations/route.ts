@@ -8,6 +8,9 @@ import type { Anchor } from "@/lib/types";
 
 // GET /api/annotations?book=&chapter=  | ?book=  | ?tag=  | ?user=  | ?recent=1
 export async function GET(req: NextRequest) {
+  // Comments are visible only to signed-in users.
+  const viewer = await currentUser();
+  if (!viewer) return NextResponse.json({ annotations: [] });
   const sp = req.nextUrl.searchParams;
   const book = sp.get("book") ? Number(sp.get("book")) : null;
   const chapter = sp.get("chapter") ? Number(sp.get("chapter")) : null;

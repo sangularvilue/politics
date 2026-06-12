@@ -20,20 +20,6 @@ function segmentBlock(text: string, ranges: Range3[]): Seg[] {
   return segs;
 }
 
-function MarginCard({ a, active, onOpen, dot }: { a: Annotation; active: boolean; onOpen: () => void; dot?: string | null }) {
-  const body = a.body.length > 150 ? a.body.slice(0, 150).trimEnd() + "…" : a.body;
-  return (
-    <button className={`margin-card${active ? " active" : ""}`} onClick={onOpen} style={dot ? { borderLeftColor: dot } : undefined}>
-      <div className="mc-who">{a.authorName}</div>
-      <div className="mc-body">{body}</div>
-      <div className="mc-foot">
-        {a.replyCount > 0 && <span>{a.replyCount} repl{a.replyCount === 1 ? "y" : "ies"}</span>}
-        {a.tags.slice(0, 2).map((t) => <span key={t} className="mc-tag">#{t}</span>)}
-      </div>
-    </button>
-  );
-}
-
 export function Blocks({
   blocks, rangesByBlock, activeIds, onMarkClick, firstOfChapter, headings,
   showComments, notesByBlock, onOpen, commentStyle, inlineOpenId, renderInlineThread, tagColorOf, markColor,
@@ -70,6 +56,7 @@ export function Blocks({
                     s.ids.length ? (
                       <mark
                         key={i}
+                        data-annot-ids={s.ids.join(" ")}
                         className={`${s.mine ? "mine" : ""} ${s.ids.some((id) => activeIds.includes(id)) ? "active" : ""}`}
                         style={markColor?.(s.ids) ? { background: markColor(s.ids) } : undefined}
                         onClick={(e) => { e.stopPropagation(); onMarkClick(s.ids); }}
@@ -82,13 +69,6 @@ export function Blocks({
                   )}
                 </div>
               </div>
-              {commentStyle === "margin" && notes.length > 0 && (
-                <div className="margin-col">
-                  {notes.map((a) => (
-                    <MarginCard key={a.id} a={a} active={activeIds.includes(a.id)} onOpen={() => onOpen([a.id])} dot={tagColorOf?.(a)} />
-                  ))}
-                </div>
-              )}
             </div>
             {commentStyle === "inline" && notes.length > 0 && (
               <div className="inline-notes">

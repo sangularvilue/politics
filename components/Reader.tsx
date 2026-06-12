@@ -7,6 +7,7 @@ import { PagedView } from "./PagedView";
 import { CommentPanel, CommentThreads } from "./CommentPanel";
 import { ProgressBar } from "./ProgressBar";
 import { ExportMenu } from "./ExportMenu";
+import { MarginLayer } from "./MarginLayer";
 import { selectionToAnchors, parseBlockId } from "@/lib/selection";
 import { usePrefs } from "@/lib/prefs";
 import { hlBg, dotColor } from "@/lib/colors";
@@ -34,6 +35,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   const [mode, setMode] = useState<Mode>("chapter");
   const [showComments, setShowComments] = useState(true);
   const [inlineOpen, setInlineOpen] = useState<string | null>(null);
+  const [reanchorId, setReanchorId] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
   const [toolbar, setToolbar] = useState<{ x: number; y: number; anchors: Anchor[]; quote: string } | null>(null);
   const [panel, setPanel] = useState<
@@ -142,7 +144,23 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     setPanel({ mode: "view", ids });
   }
   const activeIds = panel?.mode === "view" ? panel.ids : (inlineOpen ? [inlineOpen] : []);
-  const renderInlineThread = (id: string) => <CommentThreads ids={[id]} user={user} onChanged={refresh} />;
+  function startReanchor(id: string) {
+    setReanchorId(id); setPanel(null); setInlineOpen(null); setToolbar(null);
+    window.getSelection()?.removeAllRanges();
+  }
+  async function confirmReanchor() {
+    if (!toolbar || !reanchorId) return;
+    const r = await fetch(`/api/annotations/${reanchorId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anchors: toolbar.anchors, quote: toolbar.quote }),
+    });
+    setToolbar(null);
+    window.getSelection()?.removeAllRanges();
+    if (r.ok) { setReanchorId(null); await refresh(); }
+    else { alert((await r.json()).error || "Could not update the region."); }
+  }
+  const renderInlineThread = (id: string) => <CommentThreads ids={[id]} user={user} onChanged={refresh} onReanchor={startReanchor} />;
+  const reanchorTarget = reanchorId ? annotations.find((a) => a.id === reanchorId) : null;
 
   // categorical highlight colors (resolved from each annotation's first colored tag)
   const colorByAnnot = useMemo(() => {
@@ -208,6 +226,9 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   );
 
   const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
+  const marginLayerEl = (commentStyle === "margin" && showComments && user && visibleNotes.length > 0)
+    ? <MarginLayer notes={visibleNotes} activeIds={activeIds} onOpen={openView} tagColorOf={tagColorOf} />
+    : null;
 
   return (
     <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"} data-comment-style={commentStyle}>
@@ -218,15 +239,21 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
           {mode === "chapter" && <> · Chapter {currentChapter}</>}
           <span className="mono rt-bekker"> · Bekker {book.bekker}</span>
         </div>
-        <button
-          className={`comments-toggle${showComments ? " active" : ""}`}
-          onClick={toggleComments}
-          aria-pressed={showComments}
-          title={showComments ? "Hide comments" : "Show comments"}
-        >
-          💬 {showComments ? "Comments on" : "Comments off"}
-        </button>
-        <ExportMenu book={book.book} chapter={currentChapter} />
+        {user ? (
+          <button
+            className={`comments-toggle${showComments ? " active" : ""}`}
+            onClick={toggleComments}
+            aria-pressed={showComments}
+            title={showComments ? "Hide comments" : "Show comments"}
+          >
+            💬 {showComments ? "Comments on" : "Comments off"}
+          </button>
+        ) : (
+          <a className="comments-toggle" href={`/register?next=${encodeURIComponent(`/read/${book.book}/${currentChapter}`)}`} title="Sign up to read and add notes">
+            💬 Sign in for notes
+          </a>
+        )}
+        <ExportMenu book={book.book} chapter={currentChapter} canComments={!!user} />
         <div className="mode-switch" role="tablist" aria-label="Reading mode">
           {([["chapter", "Chapter"], ["scroll", "Scroll"], ["page", "Pages"]] as [Mode, string][]).map(([m, label]) => (
             <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)} aria-pressed={mode === m}>{label}</button>
@@ -248,6 +275,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
               {prev ? <Link href={`/read/${prev.book}/${prev.chapter}`}><span className="lbl">Previous</span>{ROMAN[prev.book]}. Chapter {prev.chapter}</Link> : <span />}
               {next ? <Link href={`/read/${next.book}/${next.chapter}`} style={{ textAlign: "right" }}><span className="lbl">Next</span>{ROMAN[next.book]}. Chapter {next.chapter}</Link> : <span />}
             </nav>
+            {marginLayerEl}
           </div>
         )}
 
@@ -255,6 +283,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
           <div className="reader-col">
             <header className="chapter-head"><div className="bk">{book.title}</div><h1>{book.title}</h1><div className="theme">{book.theme}</div><div className="bekker">Bekker {book.bekker}</div></header>
             {blocksEl}
+            {marginLayerEl}
           </div>
         )}
 
@@ -282,14 +311,21 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         )}
       </div>
 
+      {reanchorTarget && (
+        <div className="reanchor-banner">
+          <span>Select the new passage for this note, then confirm. <i>“{reanchorTarget.quote.slice(0, 60)}{reanchorTarget.quote.length > 60 ? "…" : ""}”</i></span>
+          <button className="btn" onClick={() => { setReanchorId(null); setToolbar(null); window.getSelection()?.removeAllRanges(); }}>Cancel</button>
+        </div>
+      )}
+
       {toolbar && (
         <button
           className={isMobile ? "sel-toolbar mobile" : "sel-toolbar"}
           style={isMobile ? undefined : { left: toolbar.x, top: toolbar.y }}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={openCreate}
+          onClick={reanchorId ? confirmReanchor : openCreate}
         >
-          ✎ Annotate
+          {reanchorId ? "✓ Set as new region" : "✎ Annotate"}
         </button>
       )}
 
@@ -305,6 +341,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
           user={user}
           onClose={() => setPanel(null)}
           onChanged={refresh}
+          onReanchor={startReanchor}
         />
       )}
     </div>
