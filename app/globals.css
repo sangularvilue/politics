@@ -204,6 +204,27 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .reader-area[data-comment-style="sidebar"]:not([data-mode="page"]) .reader-col { margin: 0; flex: 1 1 auto; min-width: 0; }
 .comment-rail { flex: 0 0 280px; position: sticky; top: 112px; max-height: calc(100vh - 132px); overflow-y: auto; border-left: 1px solid var(--border); padding-left: 20px; display: flex; flex-direction: column; gap: .6rem; }
 .rail-head { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); margin-bottom: .3rem; }
+
+/* Tasteful thin scrollbars for inner scroll areas (Firefox + WebKit) */
+.comment-rail, .panel-body, .modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.comment-rail::-webkit-scrollbar,
+.panel-body::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar { width: 9px; height: 9px; }
+.comment-rail::-webkit-scrollbar-track,
+.panel-body::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track { background: transparent; }
+.comment-rail::-webkit-scrollbar-thumb,
+.panel-body::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+.comment-rail::-webkit-scrollbar-thumb:hover,
+.panel-body::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: padding-box; }
 @media (max-width: 1023px) {
   .comment-rail { display: none; }
   .reader-area[data-comment-style="sidebar"]:not([data-mode="page"]) .reader-content { display: block; }
