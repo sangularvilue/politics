@@ -157,6 +157,29 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; }
 .btn:disabled { opacity: .5; cursor: default; }
 .icon-btn.active { border-color: var(--accent); color: var(--accent); }
+.prefs-wrap { position: relative; }
+/* Compact menu — present in the DOM but only revealed at small widths. */
+.nav-burger-wrap { position: relative; display: none; }
+.nav-burger svg { display: block; }
+.nav-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 80;
+  width: min(244px, calc(100vw - 24px));
+  background: var(--popup-bg); border: 1px solid var(--popup-border); border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.30); padding: 6px;
+  display: flex; flex-direction: column;
+}
+.nav-menu-item {
+  display: flex; align-items: center; gap: .55rem; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; font-family: var(--font-sans);
+  font-size: .9rem; color: var(--ink-soft); padding: .55rem .65rem; border-radius: 7px;
+  transition: background .15s, color .15s;
+}
+.nav-menu-item:hover { background: var(--bg-sunken); color: var(--accent); }
+.nav-menu-item.active { color: var(--ink); }
+.nav-menu-item .nmi-gly { color: var(--ink-faint); width: 1.1em; text-align: center; }
+.nav-menu-user { flex-direction: column; align-items: flex-start; gap: .1rem; color: var(--ink); }
+.nav-menu-user .nmi-sub { font-size: .66rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); }
+.nav-menu-sep { height: 1px; background: var(--border-soft); margin: 5px 4px; }
 
 /* ---------- Preferences popover ---------- */
 .prefs-pop {
@@ -217,12 +240,19 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .notif-prev { font-size: .84rem; color: var(--text); margin-top: .2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .notif-empty { padding: 18px 14px; font-size: .84rem; color: var(--text-muted); }
 
-/* Small screens: the signed-in nav is wider than the viewport — let it scroll,
-   and pin the header popovers to the viewport so that scroll doesn't clip them. */
-@media (max-width: 640px) {
-  .nav { overflow-x: auto; scrollbar-width: none; }
-  .nav::-webkit-scrollbar { display: none; }
-  .notif-pop, .prefs-pop { position: fixed; top: 68px; left: 12px; right: 12px; width: auto; }
+/* Small screens: the full nav is wider than the viewport, so the secondary
+   links, preferences and account actions collapse into a compact menu. The
+   brand, search and notifications bell stay in the bar. Header popovers pin to
+   the viewport as full-width sheets so the tight icon cluster can't clip them. */
+@media (max-width: 860px) {
+  .nav { gap: .55rem; }
+  /* Hide everything the compact menu now carries. */
+  .nav .nav-link, .nav .nav-admin, .nav .nav-signout, .nav .nav-signin, .prefs-btn { display: none; }
+  .prefs-wrap { display: contents; }   /* drop the empty wrapper's flex gap */
+  .nav-burger-wrap { display: block; }
+  .notif-pop, .prefs-pop {
+    position: fixed; top: 64px; left: 12px; right: 12px; width: auto; max-width: none;
+  }
 }
 
 /* ---------- Export popover ---------- */
@@ -561,5 +591,4 @@ mark.hl { background: var(--hl-strong); color: var(--ink); padding: 0 .1em; bord
 
 @media (max-width: 640px) {
   .para .ptext { font-size: 1.1rem; }
-  .nav { gap: 1rem; }
 }
