@@ -73,3 +73,22 @@ export interface Reply {
 export interface AnnotationThread extends Annotation {
   replies: Reply[];
 }
+
+// ---- Notifications ----
+export interface Notification {
+  id: string;
+  type: "reply";
+  /** Why you got this: a reply on your annotation, or a reply to your reply. */
+  reason: "annotation" | "reply";
+  annotationId: string;
+  replyId: string;
+  actorId: string;
+  actorName: string;
+  book: number;
+  chapter: number;
+  /** Snippet of the highlighted passage, for context. */
+  quote: string;
+  /** Snippet of the reply body. */
+  preview: string;
+  createdAt: number;
+}

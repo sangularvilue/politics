@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useUser } from "@/lib/useUser";
 import { PrefsPopover } from "./PrefsPopover";
 import { TagColorModal } from "./TagColorModal";
+import { NotificationsBell } from "./NotificationsBell";
 
 export function SiteHeader() {
   const { user, logout } = useUser();
@@ -33,6 +34,7 @@ export function SiteHeader() {
         {user?.isAdmin && <button className="nav-admin" onClick={() => setAdminOpen(true)} title="Tag colors">Admin</button>}
         {user ? (
           <>
+            <NotificationsBell />
             <Link href={`/authors/${user.id}`} title="Your annotations" style={{ color: "var(--ink)" }}>{user.displayName}</Link>
             <button className="btn" onClick={async () => { await logout(); router.refresh(); }}>Sign out</button>
           </>

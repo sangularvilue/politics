@@ -1,8 +1,9 @@
 import { v4 as uuid } from "uuid";
 import {
   redis, annotKey, repliesKey, idxAll, idxBook, idxChapter, idxTag, idxUser, namesKey, tagsKey, authorsKey,
+  notifsKey, notifsSeenKey,
 } from "./redis";
-import type { Annotation, AnnotationThread, Anchor, Reply } from "./types";
+import type { Annotation, AnnotationThread, Anchor, Reply, Notification } from "./types";
 
 /** Author of a comment — a real user id, or a synthetic guest id for "posted as". */
 export interface Author { id: string; name: string }
@@ -131,6 +132,8 @@ export async function listAuthors(limit = 200): Promise<{ id: string; name: stri
 }
 
 // ---- replies ----
+const NOTIFS_MAX = 200;
+
 export async function addReply(
   author: Author, annotId: string, body: string, parentId: string | null
 ): Promise<Reply | null> {
@@ -147,12 +150,63 @@ export async function addReply(
   };
   a.replyCount = (a.replyCount || 0) + 1;
   a.updatedAt = reply.createdAt;
+
+  // Notify the annotation's owner and, for a nested reply, the author of the
+  // reply being responded to. Never the actor themselves; guest authors
+  // ("posted as") can't sign in, so they take no notifications.
+  const recipients = new Set<string>();
+  if (a.userId !== author.id && !a.userId.startsWith("guest:")) recipients.add(a.userId);
+  if (parentId) {
+    const parent = (await getReplies(annotId)).find((r) => r.id === parentId);
+    if (parent && parent.userId !== author.id && !parent.userId.startsWith("guest:")) recipients.add(parent.userId);
+  }
+
   const p = redis.pipeline();
   p.rpush(repliesKey(annotId), reply);
   p.set(annotKey(annotId), a);
   p.hset(namesKey(), { [author.id]: author.name });
+  for (const uid of recipients) {
+    const n: Notification = {
+      id: uuid(),
+      type: "reply",
+      reason: uid === a.userId ? "annotation" : "reply",
+      annotationId: annotId,
+      replyId: reply.id,
+      actorId: author.id,
+      actorName: author.name,
+      book: a.book,
+      chapter: a.chapter,
+      quote: a.quote.slice(0, 120),
+      preview: reply.body.slice(0, 160),
+      createdAt: reply.createdAt,
+    };
+    p.lpush(notifsKey(uid), n);
+    p.ltrim(notifsKey(uid), 0, NOTIFS_MAX - 1);
+  }
   await p.exec();
   return reply;
+}
+
+// ---- notifications ----
+export async function listNotifications(
+  userId: string
+): Promise<{ notifications: (Notification & { unread: boolean })[]; unread: number }> {
+  const [items, seenRaw] = await Promise.all([
+    redis.lrange<Notification>(notifsKey(userId), 0, -1),
+    redis.get<number>(notifsSeenKey(userId)),
+  ]);
+  const seenAt = Number(seenRaw || 0);
+  let unread = 0;
+  const notifications = items.map((n) => {
+    const isUnread = n.createdAt > seenAt;
+    if (isUnread) unread++;
+    return { ...n, unread: isUnread };
+  });
+  return { notifications, unread };
+}
+
+export async function markNotificationsSeen(userId: string): Promise<void> {
+  await redis.set(notifsSeenKey(userId), Date.now());
 }
 
 // ---- edit / delete: annotations (owner or admin) ----

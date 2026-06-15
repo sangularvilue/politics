@@ -183,6 +183,48 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 .pref-toggle.on .knob::after { transform: translateX(14px); background: var(--on-accent); }
 .pref-toggle.on { color: var(--text); }
 
+/* ---------- Notifications ---------- */
+.notif-wrap { position: relative; }
+.notif-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: 999px; background: var(--accent); color: var(--on-accent);
+  font-size: 10px; font-weight: 700; line-height: 17px; text-align: center;
+  font-family: var(--font-sans); box-shadow: 0 0 0 2px var(--bg);
+}
+.notif-pop {
+  position: absolute; top: calc(100% + 12px); right: 0; width: 360px; max-width: calc(100vw - 24px);
+  z-index: 80; background: var(--popup-bg); border: 1px solid var(--popup-border);
+  border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.30); overflow: hidden;
+}
+.notif-head { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); padding: 11px 14px 9px; border-bottom: 1px solid var(--border-soft); }
+.notif-list { max-height: min(480px, 65vh); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.notif-list::-webkit-scrollbar { width: 9px; }
+.notif-list::-webkit-scrollbar-track { background: transparent; }
+.notif-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+.notif-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  border-bottom: 1px solid var(--border-soft); padding: 11px 14px; cursor: pointer;
+  font-family: var(--font-sans); transition: background .15s; color: var(--text);
+}
+.notif-item:last-child { border-bottom: none; }
+.notif-item:hover { background: var(--bg-sunken); }
+.notif-item.unread { box-shadow: inset 2px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.notif-item.unread:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.notif-meta { font-size: .78rem; color: var(--text-muted); display: flex; gap: .35rem; align-items: baseline; flex-wrap: wrap; }
+.notif-meta strong { color: var(--text); font-weight: 600; }
+.notif-time { margin-left: auto; font-size: .68rem; color: var(--text-faint); white-space: nowrap; }
+.notif-quote { font-family: var(--font-serif); font-style: italic; font-size: .8rem; color: var(--text-faint); margin-top: .25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notif-prev { font-size: .84rem; color: var(--text); margin-top: .2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.notif-empty { padding: 18px 14px; font-size: .84rem; color: var(--text-muted); }
+
+/* Small screens: the signed-in nav is wider than the viewport — let it scroll,
+   and pin the header popovers to the viewport so that scroll doesn't clip them. */
+@media (max-width: 640px) {
+  .nav { overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .notif-pop, .prefs-pop { position: fixed; top: 68px; left: 12px; right: 12px; width: auto; }
+}
+
 /* ---------- Export popover ---------- */
 .export-pop { position: absolute; top: calc(100% + 10px); right: 0; width: 244px; z-index: 80; background: var(--popup-bg); border: 1px solid var(--popup-border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.30); padding: 13px; display: flex; flex-direction: column; gap: 12px; }
 .pref-seg.vert { flex-direction: column; gap: 2px; }

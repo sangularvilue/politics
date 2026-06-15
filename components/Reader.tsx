@@ -179,13 +179,13 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   // annotations in current view, in reading order (for the sidebar rail)
   const visibleNotes = view.blocks.flatMap((b) => notesByBlock[b.id] || []);
 
-  // deep link
-  const jumpedRef = useRef(false);
+  // deep link — keyed by id so a second ?a= link to the same chapter still jumps
+  const jumpedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (jumpedRef.current || !openId) return;
+    if (!openId || jumpedRef.current === openId) return;
     const a = initialAnnotations.find((x) => x.id === openId);
     if (!a) return;
-    jumpedRef.current = true;
+    jumpedRef.current = openId;
     setPanel({ mode: "view", ids: [openId] });
     setTimeout(() => {
       document.querySelector<HTMLElement>(`[data-block-id="${a.anchors[0]?.blockId}"]`)
