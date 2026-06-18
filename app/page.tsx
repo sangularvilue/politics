@@ -6,14 +6,6 @@ export default function Home() {
     <div className="wrap">
       <section className="hero">
         <h1 className="greek-title">Aristotle&rsquo;s Politics</h1>
-        <div className="byline">
-          translated by <b>Benjamin Jowett</b> · eight books
-        </div>
-        <p className="lede">
-          The complete text of Aristotle&rsquo;s treatise on the city, the household, justice, and
-          the best constitution &mdash; in the translation that has shaped English readers&rsquo;
-          understanding of the work for over a century.
-        </p>
       </section>
 
       <div className="eyebrow" style={{ textAlign: "center", marginBottom: ".5rem" }}>The Eight Books</div>
