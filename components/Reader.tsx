@@ -3,7 +3,6 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import type { Annotation, Anchor, Block, Book, PublicUser } from "@/lib/types";
 import { Blocks, type Range3 } from "./Blocks";
-import { EditableBlocks } from "./EditableBlocks";
 import { PagedView } from "./PagedView";
 import { CommentPanel, CommentThreads } from "./CommentPanel";
 import { ProgressBar } from "./ProgressBar";
@@ -100,16 +99,6 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     }
     return { blocks, firstOfChapter, headings };
   }, [mode, book, currentChapter, applyLocal]);
-
-  // distinct annotation count per block, for the edit view's "highlights here" cue
-  const noteCounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const a of annotations) {
-      const seen = new Set<string>();
-      for (const an of a.anchors) if (!seen.has(an.blockId)) { seen.add(an.blockId); m[an.blockId] = (m[an.blockId] || 0) + 1; }
-    }
-    return m;
-  }, [annotations]);
 
   renderedRef.current = view.blocks;
 
@@ -249,15 +238,8 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
       onMarkClick={openView} firstOfChapter={view.firstOfChapter} headings={view.headings}
       showComments={showComments} notesByBlock={notesByBlock} onOpen={openView}
       commentStyle={commentStyle} inlineOpenId={inlineOpen} renderInlineThread={renderInlineThread}
-      tagColorOf={tagColorOf} markColor={markColor} />
-  );
-
-  const editableEl = (
-    <EditableBlocks blocks={view.blocks} firstOfChapter={view.firstOfChapter} headings={view.headings}
-      noteCounts={noteCounts} onSaved={onSavedBlock} />
-  );
-  const editBanner = (
-    <div className="edit-banner">✎ Edit mode — corrections save per paragraph and go live for every reader. Existing highlights are realigned automatically. ⌘/Ctrl+Enter to save, Esc to revert.</div>
+      tagColorOf={tagColorOf} markColor={markColor}
+      editing={editMode} onSaveBlock={onSavedBlock} />
   );
 
   const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
@@ -315,8 +297,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
               {currentChapter === 1 && <div className="theme">{book.theme}</div>}
               <div className="bekker">Bekker {book.bekker} · cite as {ROMAN[book.book]}.{currentChapter}.¶</div>
             </header>
-            {editMode && editBanner}
-            {editMode ? editableEl : blocksEl}
+            {blocksEl}
             <nav className="chapter-nav">
               {prev ? <Link href={`/read/${prev.book}/${prev.chapter}`}><span className="lbl">Previous</span>{ROMAN[prev.book]}. Chapter {prev.chapter}</Link> : <span />}
               {next ? <Link href={`/read/${next.book}/${next.chapter}`} style={{ textAlign: "right" }}><span className="lbl">Next</span>{ROMAN[next.book]}. Chapter {next.chapter}</Link> : <span />}
@@ -328,8 +309,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         {mode === "scroll" && (
           <div className="reader-col">
             <header className="chapter-head"><div className="bk">{book.title}</div><h1>{book.title}</h1><div className="theme">{book.theme}</div><div className="bekker">Bekker {book.bekker}</div></header>
-            {editMode && editBanner}
-            {editMode ? editableEl : blocksEl}
+            {blocksEl}
             {!editMode && marginLayerEl}
           </div>
         )}
