@@ -3,6 +3,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import type { Annotation, Anchor, Block, Book, PublicUser } from "@/lib/types";
 import { Blocks, type Range3 } from "./Blocks";
+import { EditableBlocks } from "./EditableBlocks";
 import { PagedView } from "./PagedView";
 import { CommentPanel, CommentThreads } from "./CommentPanel";
 import { ProgressBar } from "./ProgressBar";
@@ -34,6 +35,10 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   const commentStyle = prefs.commentStyle;
   const [mode, setMode] = useState<Mode>("chapter");
   const [showComments, setShowComments] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  // Admin text corrections applied this session, so saves show instantly
+  // (the server merges them in on the next full load).
+  const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
   const [inlineOpen, setInlineOpen] = useState<string | null>(null);
   const [reanchorId, setReanchorId] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>(initialAnnotations);
@@ -57,8 +62,16 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     return () => window.removeEventListener("resize", onR);
   }, []);
 
-  function changeMode(m: Mode) { setMode(m); setToolbar(null); try { localStorage.setItem("pol-readmode", m); } catch {} }
+  function changeMode(m: Mode) { setMode(m); setToolbar(null); if (m === "page") setEditMode(false); try { localStorage.setItem("pol-readmode", m); } catch {} }
   function toggleComments() { setShowComments((v) => { const nv = !v; try { localStorage.setItem("pol-comments", nv ? "on" : "off"); } catch {} return nv; }); }
+  function toggleEdit() {
+    setEditMode((v) => {
+      const nv = !v;
+      if (nv) { setToolbar(null); if (mode === "page") changeMode("chapter"); }
+      return nv;
+    });
+  }
+  const onSavedBlock = (id: string, text: string) => setLocalEdits((prev) => ({ ...prev, [id]: text }));
 
   const refresh = useCallback(async () => {
     const r = await fetch(`/api/annotations?book=${book.book}`);
@@ -67,10 +80,14 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
   }, [book.book]);
 
   // ----- build the flat block list for the active mode -----
+  const applyLocal = useCallback(
+    (b: Block): Block => (localEdits[b.id] != null ? { ...b, text: localEdits[b.id] } : b),
+    [localEdits]
+  );
   const view = useMemo(() => {
     if (mode === "chapter") {
       const ch = book.chapters.find((c) => c.chapter === currentChapter);
-      const blocks = ch ? ch.blocks : [];
+      const blocks = (ch ? ch.blocks : []).map(applyLocal);
       return { blocks, firstOfChapter: new Set<number>(blocks.length ? [0] : []), headings: {} as Record<number, { chapter: number }> };
     }
     const blocks: Block[] = [];
@@ -79,10 +96,20 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
     for (const ch of book.chapters) {
       firstOfChapter.add(blocks.length);
       headings[blocks.length] = { chapter: ch.chapter };
-      blocks.push(...ch.blocks);
+      blocks.push(...ch.blocks.map(applyLocal));
     }
     return { blocks, firstOfChapter, headings };
-  }, [mode, book, currentChapter]);
+  }, [mode, book, currentChapter, applyLocal]);
+
+  // distinct annotation count per block, for the edit view's "highlights here" cue
+  const noteCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const a of annotations) {
+      const seen = new Set<string>();
+      for (const an of a.anchors) if (!seen.has(an.blockId)) { seen.add(an.blockId); m[an.blockId] = (m[an.blockId] || 0) + 1; }
+    }
+    return m;
+  }, [annotations]);
 
   renderedRef.current = view.blocks;
 
@@ -225,13 +252,21 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
       tagColorOf={tagColorOf} markColor={markColor} />
   );
 
+  const editableEl = (
+    <EditableBlocks blocks={view.blocks} firstOfChapter={view.firstOfChapter} headings={view.headings}
+      noteCounts={noteCounts} onSaved={onSavedBlock} />
+  );
+  const editBanner = (
+    <div className="edit-banner">✎ Edit mode — corrections save per paragraph and go live for every reader. Existing highlights are realigned automatically. ⌘/Ctrl+Enter to save, Esc to revert.</div>
+  );
+
   const jumpId = book.chapters.find((c) => c.chapter === currentChapter)?.blocks[0]?.id;
   const marginLayerEl = (commentStyle === "margin" && showComments && user && visibleNotes.length > 0)
     ? <MarginLayer notes={visibleNotes} activeIds={activeIds} onOpen={openView} tagColorOf={tagColorOf} />
     : null;
 
   return (
-    <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"} data-comment-style={commentStyle}>
+    <div className="reader-area" data-mode={mode} data-comments={showComments ? "on" : "off"} data-comment-style={commentStyle} data-editing={editMode ? "on" : "off"}>
       {prefs.progressBar && mode !== "page" && <ProgressBar />}
       <div className="reader-bar">
         <div className="rt-label">
@@ -254,6 +289,16 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
           </a>
         )}
         <ExportMenu book={book.book} chapter={currentChapter} canComments={!!user} />
+        {user?.isAdmin && (
+          <button
+            className={`comments-toggle edit-toggle${editMode ? " active" : ""}`}
+            onClick={toggleEdit}
+            aria-pressed={editMode}
+            title={editMode ? "Finish editing" : "Correct the text (admin)"}
+          >
+            ✎ {editMode ? "Done" : "Edit text"}
+          </button>
+        )}
         <div className="mode-switch" role="tablist" aria-label="Reading mode">
           {([["chapter", "Chapter"], ["scroll", "Scroll"], ["page", "Pages"]] as [Mode, string][]).map(([m, label]) => (
             <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)} aria-pressed={mode === m}>{label}</button>
@@ -270,26 +315,28 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
               {currentChapter === 1 && <div className="theme">{book.theme}</div>}
               <div className="bekker">Bekker {book.bekker} · cite as {ROMAN[book.book]}.{currentChapter}.¶</div>
             </header>
-            {blocksEl}
+            {editMode && editBanner}
+            {editMode ? editableEl : blocksEl}
             <nav className="chapter-nav">
               {prev ? <Link href={`/read/${prev.book}/${prev.chapter}`}><span className="lbl">Previous</span>{ROMAN[prev.book]}. Chapter {prev.chapter}</Link> : <span />}
               {next ? <Link href={`/read/${next.book}/${next.chapter}`} style={{ textAlign: "right" }}><span className="lbl">Next</span>{ROMAN[next.book]}. Chapter {next.chapter}</Link> : <span />}
             </nav>
-            {marginLayerEl}
+            {!editMode && marginLayerEl}
           </div>
         )}
 
         {mode === "scroll" && (
           <div className="reader-col">
             <header className="chapter-head"><div className="bk">{book.title}</div><h1>{book.title}</h1><div className="theme">{book.theme}</div><div className="bekker">Bekker {book.bekker}</div></header>
-            {blocksEl}
-            {marginLayerEl}
+            {editMode && editBanner}
+            {editMode ? editableEl : blocksEl}
+            {!editMode && marginLayerEl}
           </div>
         )}
 
         {mode === "page" && <PagedView jumpToBlockId={jumpId}>{blocksEl}</PagedView>}
 
-        {commentStyle === "sidebar" && showComments && mode !== "page" && (
+        {commentStyle === "sidebar" && showComments && mode !== "page" && !editMode && (
           <aside className="comment-rail">
             <div className="rail-head">Comments ({visibleNotes.length})</div>
             {visibleNotes.length === 0 && <p className="muted" style={{ fontSize: ".82rem" }}>No comments in view.</p>}
@@ -318,7 +365,7 @@ export function Reader({ book, currentChapter, prev, next, initialAnnotations, u
         </div>
       )}
 
-      {toolbar && (
+      {toolbar && !editMode && (
         <button
           className={isMobile ? "sel-toolbar mobile" : "sel-toolbar"}
           style={isMobile ? undefined : { left: toolbar.x, top: toolbar.y }}

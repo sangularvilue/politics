@@ -4,6 +4,7 @@ import { listByBook } from "@/lib/store";
 import { currentUser } from "@/lib/auth";
 import { redis, tagColorsKey } from "@/lib/redis";
 import { DEFAULT_TAG_COLORS } from "@/lib/colors";
+import { getBookOverrides, mergeBookOverrides } from "@/lib/overrides";
 import { Reader } from "@/components/Reader";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,8 @@ export default async function ReadPage({ params, searchParams }: {
   const ch = getChapter(book, chapter);
   if (!bk || !ch) notFound();
 
-  const [user, stored] = await Promise.all([
-    currentUser(), redis.hgetall<Record<string, string>>(tagColorsKey()),
+  const [user, stored, overrides] = await Promise.all([
+    currentUser(), redis.hgetall<Record<string, string>>(tagColorsKey()), getBookOverrides(book),
   ]);
   // Comments are visible only to signed-in users.
   const annotations = user ? await listByBook(book) : [];
@@ -34,7 +35,7 @@ export default async function ReadPage({ params, searchParams }: {
 
   return (
     <Reader
-      book={bk}
+      book={mergeBookOverrides(bk, overrides)}
       currentChapter={chapter}
       prev={prev}
       next={next}

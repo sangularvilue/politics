@@ -440,6 +440,37 @@ h1, h2, h3, h4 { font-family: var(--font-serif); font-weight: 500; line-height: 
 /* highlights are the only comment cue in page mode → make them a touch stronger */
 .reader-area[data-mode="page"] .ptext mark { background: var(--hl-strong); }
 
+/* ---------- Admin text editing ---------- */
+.edit-toggle.active { border-color: var(--accent); color: var(--on-accent); background: var(--accent); font-weight: 600; }
+/* while editing, drop the marginalia gutter so paragraphs use the full measure */
+.reader-area[data-editing="on"] .reader-col { max-width: var(--reading-measure); padding-right: 0; }
+.reader-area[data-editing="on"] .margin-layer { display: none; }
+.edit-banner {
+  font-family: var(--font-sans); font-size: .82rem; line-height: 1.5; color: var(--ink-soft);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); border: 1px solid var(--accent-deep);
+  border-radius: 8px; padding: .65rem .85rem; margin-bottom: 2rem;
+}
+.para-edit { position: relative; margin: 0 0 1.5em; padding-left: 2.6rem; }
+.para-edit .pnum {
+  position: absolute; left: 0; top: .85em; width: 1.7rem; text-align: right; user-select: none;
+  font-family: var(--font-sans); font-size: calc(var(--reading-size) * .62); color: var(--text-faint);
+}
+.para-edit.dirty .pnum { color: var(--accent); }
+.pe-body { display: flex; flex-direction: column; gap: .55rem; }
+.pe-area {
+  width: 100%; resize: none; overflow: hidden; display: block;
+  font-family: var(--reading-font); font-size: var(--reading-size); line-height: var(--reading-leading);
+  color: var(--text); background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: 8px; padding: .55rem .75rem; transition: border-color .15s, background .15s;
+}
+.pe-area:focus { outline: none; border-color: var(--accent-deep); background: var(--bg-raised); }
+.para-edit.dirty .pe-area { border-color: var(--accent-deep); }
+.pe-actions { display: flex; align-items: center; gap: .7rem; justify-content: flex-end; min-height: 1.7rem; }
+.pe-note { margin-right: auto; font-family: var(--font-sans); font-size: .72rem; color: var(--ink-faint); }
+.pe-err { font-family: var(--font-sans); font-size: .78rem; color: #e88; }
+.pe-ok { font-family: var(--font-sans); font-size: .78rem; color: var(--accent); }
+.pe-actions .btn { font-size: .78rem; padding: .35rem .9rem; }
+
 /* drop cap on first paragraph of a chapter */
 .para.first .ptext::first-letter {
   font-size: 3.1rem; line-height: .8; float: left; padding: .08em .08em 0 0;

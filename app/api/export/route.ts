@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getBook } from "@/lib/text";
 import { listByBook, getReplies } from "@/lib/store";
 import { renderExport } from "@/lib/export";
+import { getBookOverrides, mergeBookOverrides } from "@/lib/overrides";
 import { parseBlockId } from "@/lib/selection";
 import { currentUser } from "@/lib/auth";
 import type { Reply } from "@/lib/types";
@@ -17,8 +18,10 @@ export async function GET(req: NextRequest) {
   // comments are visible only to signed-in users
   if (comments !== "none" && !(await currentUser())) comments = "none";
 
-  const bk = getBook(book);
-  if (!bk) return new Response("Unknown book.", { status: 400 });
+  const bk0 = getBook(book);
+  if (!bk0) return new Response("Unknown book.", { status: 400 });
+  // fold in any admin text corrections so downloads match what's on the page
+  const bk = mergeBookOverrides(bk0, await getBookOverrides(book));
 
   // chapters to include
   let chapters = bk.chapters;

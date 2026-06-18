@@ -28,3 +28,5 @@ export const notifsKey = (userId: string) => `politics:notifs:${userId}`; // lis
 export const notifsSeenKey = (userId: string) => `politics:notifs:${userId}:seen`; // ms timestamp watermark for unread count
 export const resetKey = (token: string) => `politics:reset:${token}`; // password reset token
 export const tagColorsKey = () => `politics:tag-colors`; // hash tag -> color name
+export const textOverridesKey = (book: number) => `politics:text-overrides:b${book}`; // hash blockId -> corrected text
+export const textEditsLogKey = () => `politics:text-edits`; // list of edit-audit JSON, newest first
